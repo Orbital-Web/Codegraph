@@ -1,9 +1,7 @@
 from logging.config import fileConfig
-
-import sys
 from pathlib import Path
-from dotenv import load_dotenv
 
+from dotenv import load_dotenv
 
 from alembic import context
 

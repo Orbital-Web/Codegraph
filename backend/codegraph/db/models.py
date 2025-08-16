@@ -1,19 +1,12 @@
+import uuid
 from datetime import datetime
 from pathlib import Path
-import uuid
 
-from sqlalchemy import (
-    String,
-    Integer,
-    DateTime,
-    ForeignKey,
-    Text,
-    Index,
-)
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship, DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from codegraph.graph.models import NodeType, ReferenceType
+from codegraph.graph.models import Language, NodeType, ReferenceType
 
 
 class Base(DeclarativeBase):
@@ -61,25 +54,18 @@ class Project(Base):
 class File(Base):
     __tablename__ = "files"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String)
     path: Mapped[Path] = mapped_column(String)
+    language: Mapped[Language] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
-    parent_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("files.id", ondelete="CASCADE")
-    )
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE")
-    )
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"))
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
 
     # relationships
-    parent: Mapped["File | None"] = relationship(
-        remote_side=[id], back_populates="children"
-    )
+    parent: Mapped["File | None"] = relationship(remote_side=[id], back_populates="children")
     children: Mapped[list["File"]] = relationship(
         back_populates="parent", passive_deletes=True, single_parent=True
     )
@@ -105,16 +91,12 @@ class File(Base):
 class Node(Base):
     __tablename__ = "nodes"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String)
     implementation: Mapped[str] = mapped_column(Text)
     type: Mapped[NodeType] = mapped_column(String)
 
-    file_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("files.id", ondelete="CASCADE")
-    )
+    file_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"))
 
     # relationships
     file: Mapped["File"] = relationship(back_populates="nodes")

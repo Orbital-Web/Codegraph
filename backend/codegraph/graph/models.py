@@ -12,3 +12,7 @@ class ReferenceType(str, Enum):
     INHERITS = "inherits"  # class -> class
     INPUTS = "inputs"  # function -> type
     OUTPUTS = "outputs"  # function -> type
+
+
+class Language(str, Enum):
+    PYTHON = "python"

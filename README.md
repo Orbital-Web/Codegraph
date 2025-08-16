@@ -25,4 +25,4 @@ TODO: Description
    ```
 
 3. If you are using VSCode and want to run a debug instance, go to `Run` and launch `codegraph cli`.
-   Otherwise, to run a non-debug instance, run `main.py` inside `/backend`
+   Otherwise, # TODO:

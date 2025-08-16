@@ -1,10 +1,9 @@
-import io
 from pathlib import Path
-from colorama import Fore, Style
 
 import pytest
-from cli.stream import stream_with_code_format
 from colorama import Fore, Style
+
+from cli.stream import stream_with_code_format
 
 G = Fore.GREEN
 R = Fore.RED
@@ -14,7 +13,7 @@ N = Style.RESET_ALL
 def test_streaming_without_code_blocks(capsys: pytest.CaptureFixture[str]) -> None:
     project_root = Path(__file__).parent
     input_stream = [
-        "test_files/sample1.py\n",
+        "test_files/sample1.txt\n",
         "this isn't\n",
         "a code block.\n",
     ]
@@ -49,7 +48,7 @@ def test_streaming_with_split_and_leftover_chunks(
         "test_fi",
         "les/s",
         "ample2.",
-        "cpp\n`",  # ``` split across multiple chunks
+        "txt\n`",  # ``` split across multiple chunks
         "``cp",
         "p\n",
         "int factorial(int n) {\n",
@@ -63,7 +62,7 @@ def test_streaming_with_split_and_leftover_chunks(
     ]
     expected_stream = [
         "hello\n",
-        "test_files/sample2.cpp\n",
+        "test_files/sample2.txt\n",
         "```cpp\n",
         (
             "int factorial(int n) {\n"
@@ -87,7 +86,7 @@ def test_streaming_with_multiple_code_blocks(
     project_root = Path(__file__).parent
     input_stream = [
         "test_files/",
-        "sample1.py\n",
+        "sample1.txt\n",
         "`",
         "``python\n",
         "def add(a: int, b: int) -> int:\n",
@@ -100,7 +99,7 @@ def test_streaming_with_multiple_code_blocks(
         "```\n",
         "some ",
         "text\n",
-        "test_files/sample2.cpp\n```\n",
+        "test_files/sample2.txt\n```\n",
         "int factorial(int n) {\n",
         "    int result = 1;\n",
         "    for (int i = 2; i <= n; i++)\n",
@@ -110,7 +109,7 @@ def test_streaming_with_multiple_code_blocks(
         "```\n",
     ]
     expected_stream = [
-        "test_files/sample1.py\n",
+        "test_files/sample1.txt\n",
         "```python\n",
         (
             f"{G}def add(a: int, b: int) -> int:{N}\n"
@@ -125,7 +124,7 @@ def test_streaming_with_multiple_code_blocks(
         ),
         "```\n",
         "some text\n",
-        "test_files/sample2.cpp\n",
+        "test_files/sample2.txt\n",
         "```\n",
         (
             "int factorial(int n) {\n"
@@ -165,7 +164,7 @@ def test_streaming_with_new_file(capsys: pytest.CaptureFixture[str]) -> None:
 def test_streaming_with_unclosed_code_block(capsys: pytest.CaptureFixture[str]) -> None:
     project_root = Path(__file__).parent
     input_stream = [
-        "test_files/sample2.cpp\n```\n",
+        "test_files/sample2.txt\n```\n",
         "int factorial(int n) {\n",
         "    int result = 1;\n",
         "    for (int i = 2; i <= n; i++)\n",
@@ -174,7 +173,7 @@ def test_streaming_with_unclosed_code_block(capsys: pytest.CaptureFixture[str]) 
         # unclosed code block
     ]
     expected_stream = [
-        "test_files/sample2.cpp\n",
+        "test_files/sample2.txt\n",
         "```\n",
         (
             "int factorial(int n) {\n"

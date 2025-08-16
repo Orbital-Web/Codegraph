@@ -1,7 +1,8 @@
 import difflib
 from pathlib import Path
+from typing import Generator, Iterable
+
 from colorama import Fore, Style
-from typing import Iterable, Generator
 
 
 def _format_code(code_block: str, project_root: Path, file_path: Path) -> str:

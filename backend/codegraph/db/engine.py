@@ -1,18 +1,18 @@
 from contextlib import contextmanager
-from typing import Generator
+from typing import Any, Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from codegraph.configs.constants import (
-    POSTGRES_USER,
-    POSTGRES_PASSWORD,
-    POSTGRES_HOST,
-    POSTGRES_PORT,
     POSTGRES_DB,
-    POSTGRES_READONLY_USER,
+    POSTGRES_HOST,
+    POSTGRES_PASSWORD,
+    POSTGRES_PORT,
     POSTGRES_READONLY_PASSWORD,
+    POSTGRES_READONLY_USER,
+    POSTGRES_USER,
 )
 
 
@@ -23,7 +23,7 @@ def _build_connection_endpoint(
 
 
 def get_connection_endpoint(readonly: bool = False) -> str:
-    args = {
+    args: Any = {
         "user": POSTGRES_READONLY_USER if readonly else POSTGRES_USER,
         "password": POSTGRES_READONLY_PASSWORD if readonly else POSTGRES_PASSWORD,
         "host": POSTGRES_HOST,
@@ -60,9 +60,7 @@ class SqlEngine:
     @classmethod
     def get_engine(cls) -> Engine:
         if not cls._write_engine:
-            raise RuntimeError(
-                "Engine not initialized. You must call init_engine() first."
-            )
+            raise RuntimeError("Engine not initialized. You must call init_engine() first.")
         return cls._write_engine
 
     @classmethod
