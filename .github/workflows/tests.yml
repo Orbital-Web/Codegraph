@@ -14,6 +14,11 @@ jobs:
   tests:
     name: Run backend tests
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
+      CHROMA_SERVER_HOST: 127.0.0.1
+      CHROMA_SERVER_PORT: 8000
     steps:
       - name: Checkout
         uses: actions/checkout@v4
