@@ -1,0 +1,68 @@
+name: Tests
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/tests.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/tests.yml'
+
+jobs:
+  tests:
+    name: Run backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # TODO: load env file from secrets
+      - name: Prepare env file for docker-compose
+        run: |
+          touch .vscode/.env
+
+      - name: Start Docker services
+        run: |
+          docker compose -f deployment/docker/docker-compose-dev.yml up -d
+
+      - name: Wait for services to be ready
+        shell: bash
+        run: |
+          echo "Waiting for Postgres on ${POSTGRES_HOST}:${POSTGRES_PORT}"
+          for i in {1..60}; do
+            if (echo > /dev/tcp/${POSTGRES_HOST}/${POSTGRES_PORT}) >/dev/null 2>&1; then
+              echo "Postgres is up"; break; fi; sleep 1; done
+          echo "Waiting for Chroma on ${CHROMA_SERVER_HOST}:${CHROMA_SERVER_PORT}"
+          for i in {1..60}; do
+            if (echo > /dev/tcp/${CHROMA_SERVER_HOST}/${CHROMA_SERVER_PORT}) >/dev/null 2>&1; then
+              echo "Chroma is up"; break; fi; sleep 1; done
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run tests
+        working-directory: backend
+        run: |
+          pytest -v
+
+      - name: Docker service logs (on failure)
+        if: failure()
+        run: |
+          docker compose -f deployment/docker/docker-compose-dev.yml ps
+          docker compose -f deployment/docker/docker-compose-dev.yml logs --no-color | tail -n 500
+
+      - name: Teardown Docker services
+        if: always()
+        run: |
+          docker compose -f deployment/docker/docker-compose-dev.yml down -v
