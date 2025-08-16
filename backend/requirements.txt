@@ -1,0 +1,7 @@
+colorama==0.4.6
+pytest==8.4.1
+SQLAlchemy[mypy]==2.0.43
+alembic==1.16.4
+mypy==1.17.1
+psycopg2-binary==2.9.10
+python-dotenv==1.1.1

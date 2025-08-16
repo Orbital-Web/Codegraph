@@ -1,0 +1,46 @@
+{
+    "version": "0.1.0",
+    "configurations": [
+        // run
+        {
+            "name": "CodeGraph CLI",
+            "consoleName": "CLI",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "cwd": "${workspaceFolder}/backend",
+            "envFile": "${workspaceFolder}/.vscode/.env",
+            "env": {
+                "LOG_LEVEL": "DEBUG",
+                "PYTHONUNBUFFERED": "1",
+                "PYTHONPATH": "."
+            },
+            "presentation": {
+                "group": "run",
+            },
+        },
+        // test
+        {
+            "name": "Pytest",
+            "consoleName": "Pytest",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "cwd": "${workspaceFolder}/backend",
+            "envFile": "${workspaceFolder}/.vscode/.env",
+            "env": {
+              "LOG_LEVEL": "DEBUG",
+              "PYTHONUNBUFFERED": "1",
+              "PYTHONPATH": "."
+            },
+            "args": [
+              "-v"
+              // Specify a specific module/test to run or provide nothing to run all tests
+              //"tests/unit/cli/test_streaming.py"
+            ],
+            "presentation": {
+              "group": "test"
+            },
+        },
+    ],
+}

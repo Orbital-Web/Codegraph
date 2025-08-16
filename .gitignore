@@ -1,0 +1,4 @@
+### VSCode ###
+.vscode/*
+!.vscode/env_template.txt
+!.vscode/launch_template.txt
