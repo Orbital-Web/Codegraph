@@ -25,6 +25,7 @@ def run_indexing(project_id: int, project_root: Path) -> None:
     TODO: handle incremental indexing/reindexing after failure
     """
     # 0. Initialize
+    project_root = project_root.resolve()
     parsers: dict[Language, BaseParser] = {
         parser_cls._LANGUAGE: parser_cls(project_id, project_root)  # type: ignore[abstract]
         for parser_cls in BaseParser.__subclasses__()

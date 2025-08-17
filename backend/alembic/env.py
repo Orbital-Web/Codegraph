@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from alembic import context
 
 # Load .env file
-ROOT_DIR = Path(__file__).parent.parent.parent
+ROOT_DIR = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT_DIR / ".vscode" / ".env"
 if not ENV_PATH.exists():
     raise FileNotFoundError(f"Environment file not found at {ENV_PATH}")

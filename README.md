@@ -20,9 +20,9 @@ TODO: Description
    ```bash
    python -m venv .venv
    source .venv/bin/activate  # for unix
-   ./.venv/Scripts/activate   # for windows
+   .\.venv\Scripts\activate   # for windows
    pip install -r requirements.txt
    ```
 
-3. If you are using VSCode and want to run a debug instance, go to `Run` and launch `codegraph cli`.
+3. If you are using VSCode and want to run a debug instance, go to `Run` and launch `CodeGraph CLI`.
    Otherwise, # TODO:
