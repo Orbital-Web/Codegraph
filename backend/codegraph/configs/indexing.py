@@ -2,7 +2,12 @@ import os
 
 from codegraph.graph.models import Language
 
-MAX_INDEXING_FILE_SIZE = os.getenv("MAX_INDEXING_FILE_SIZE", 10)  # MB
+MAX_INDEXING_WORKERS = int(os.getenv("MAX_INDEXING_WORKERS", 16))
+
+MAX_INDEXING_FILE_SIZE = int(os.getenv("MAX_INDEXING_FILE_SIZE", 10))  # MB
+DIRECTORY_SKIP_INDEXING_PATTERN = os.getenv(
+    "DIRECTORY_SKIP_INDEXING_PATTERN", r"^\..*|^__[A-Za-z]*__$|^node_modules$"
+)
 
 CODEGRAPH_SUPPORTED_FILETYPES: dict[str, Language] = {
     "py": Language.PYTHON,

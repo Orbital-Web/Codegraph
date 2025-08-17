@@ -2,11 +2,11 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from codegraph.graph.models import Language, NodeType, ReferenceType
+from codegraph.graph.models import Language, NodeType
 
 
 class Base(DeclarativeBase):
@@ -25,7 +25,6 @@ class Node__Reference(Base):
     target_node_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True
     )
-    relationship_type: Mapped[ReferenceType] = mapped_column(String)
 
 
 # ------------------------- TABLES ------------------------- #
@@ -39,11 +38,23 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
-    root_file_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("files.id"))
+    root_file_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("files.id"))
 
     # relationships
-    root_file: Mapped["File"] = relationship(foreign_keys=[root_file_id])
+    root_file: Mapped["File | None"] = relationship(foreign_keys=[root_file_id])
     files: Mapped[list["File"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        single_parent=True,
+        passive_deletes=True,
+    )
+    nodes: Mapped[list["Node"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        single_parent=True,
+        passive_deletes=True,
+    )
+    aliases: Mapped[list["Alias"]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
         single_parent=True,
@@ -57,7 +68,7 @@ class File(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String)
     path: Mapped[Path] = mapped_column(String)
-    language: Mapped[Language] = mapped_column(String)
+    language: Mapped[Language | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
@@ -78,13 +89,13 @@ class File(Base):
     )
 
     @property
-    def is_folder(self) -> bool:
+    def is_directory(self) -> bool:
         return len(self.children) > 0
 
     __table_args__ = (
-        Index("ix_files_path", "path"),
         Index("ix_files_project", "project_id"),
         Index("ix_files_parent", "parent_id"),
+        UniqueConstraint("path", "project_id", name="uq_files_path_project"),
     )
 
 
@@ -93,13 +104,16 @@ class Node(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String)
-    implementation: Mapped[str] = mapped_column(Text)
+    global_qualifier: Mapped[str] = mapped_column(String)  # e.g foo.bar.baz, unique within project
+    definition: Mapped[str | None] = mapped_column(Text)
     type: Mapped[NodeType] = mapped_column(String)
 
     file_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"))
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
 
     # relationships
     file: Mapped["File"] = relationship(back_populates="nodes")
+    project: Mapped["Project"] = relationship(back_populates="nodes")
     references: Mapped[list["Node"]] = relationship(
         secondary=Node__Reference.__table__,
         primaryjoin=(id == Node__Reference.source_node_id),
@@ -114,7 +128,32 @@ class Node(Base):
     )
 
     __table_args__ = (
-        Index("ix_nodes_name", "name"),
-        Index("ix_nodes_type", "type"),
+        Index("ix_nodes_name_project", "name", "project_id"),
+        Index("ix_nodes_type_project", "type", "project_id"),
         Index("ix_nodes_file", "file_id"),
+        UniqueConstraint(
+            "global_qualifier", "project_id", name="uq_nodes_global_qualifier_project"
+        ),
+    )
+
+
+class Alias(Base):
+    __tablename__ = "aliases"
+
+    local_qualifier: Mapped[str] = mapped_column(String, primary_key=True)  # unique within project
+    global_qualifier: Mapped[str] = mapped_column(String)  # multiple aliases can exist
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    # relationships
+    project: Mapped["Project"] = relationship(back_populates="aliases")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "local_qualifier",
+            "global_qualifier",
+            "project_id",
+            name="uq_aliases_local_global_project",
+        ),
     )

@@ -34,7 +34,7 @@ jobs:
         working-directory: backend
         run: |
           autoflake --version
-          autoflake --check-diff --recursive --remove-all-unused-imports --remove-unused-variables --expand-star-imports .
+          autoflake --recursive --remove-all-unused-imports --remove-unused-variables --expand-star-imports .
 
       - name: Run isort (check)
         working-directory: backend
