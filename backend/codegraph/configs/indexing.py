@@ -10,43 +10,43 @@ DIRECTORY_SKIP_INDEXING_PATTERN = os.getenv(
 )
 
 CODEGRAPH_SUPPORTED_FILETYPES: dict[str, Language] = {
-    "py": Language.PYTHON,
+    ".py": Language.PYTHON,
 }
 
 INDEXED_FILETYPES: set[str] = {
     # text documents
-    "txt",
-    "md",
+    ".txt",
+    ".md",
     # code
-    "py",  # python
-    "cpp",  # c/c++
-    "c",
-    "hpp",
-    "h",
-    "sh",  # shell
-    "zsh",
-    "bash",
-    "js",  # javascript
-    "jsx",
-    "ts",  # typescript
-    "tsx",
-    "rs",  # rust
-    "cs",  # c#
-    "java",  # java
-    "go",  # golang
-    "r",  # r
-    "html",  # html/css
-    "css",
-    "scss",
-    "sass",
-    "php",  # php
-    "rb",  # ruby
+    ".py",  # python
+    ".cpp",  # c/c++
+    ".c",
+    ".hpp",
+    ".h",
+    ".sh",  # shell
+    ".zsh",
+    ".bash",
+    ".js",  # javascript
+    ".jsx",
+    ".ts",  # typescript
+    ".tsx",
+    ".rs",  # rust
+    ".cs",  # c#
+    ".java",  # java
+    ".go",  # golang
+    ".r",  # r
+    ".html",  # html/css
+    ".css",
+    ".scss",
+    ".sass",
+    ".php",  # php
+    ".rb",  # ruby
     # config
-    "conf",
-    "ini",
-    "json",
-    "yaml",
-    "yml",
-    "toml",
-    "lock",
+    ".conf",
+    ".ini",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".lock",
 }

@@ -7,6 +7,9 @@ from codegraph.db.engine import get_session
 from codegraph.db.models import File
 from codegraph.graph.indexing.parsing.base_parser import BaseParser
 from codegraph.graph.models import Language, NodeType
+from codegraph.utils.logging import get_logger
+
+logger = get_logger()
 
 
 class PythonParser(BaseParser):
@@ -18,7 +21,12 @@ class PythonParser(BaseParser):
         assert filepath.is_file()
 
         file_text = filepath.read_text(encoding="utf-8")
-        tree = ast.parse(file_text, filename=str(filepath))
+        try:
+            tree = ast.parse(file_text, filename=str(filepath))
+        except SyntaxError:
+            logger.warning(f"Syntax error in {filepath}, skipping")
+            return
+
         module_name = self._get_module_name(filepath)
 
         with get_session() as session:
@@ -57,17 +65,17 @@ class PythonParser(BaseParser):
         # handle imports
         elif isinstance(tree, (ast.Import, ast.ImportFrom)):
             for alias in tree.names:
+                # TODO: handle global_qualifier for relative imports (both Import and ImportFrom)
                 if isinstance(tree, ast.Import):
                     # abc.py: import x.y as foo -> (abc.foo = x)
                     local_name = alias.asname or alias.name.split(".", 1)[0]
-                    local_qualifier = f"{parent_qualifier}.{local_name}"
                     global_qualifier = alias.name
                 else:
                     # abc.py: from x.y import z as bar -> (abc.bar = x.y.z)
                     local_name = alias.asname or alias.name
-                    local_qualifier = f"{parent_qualifier}.{local_name}"
                     global_qualifier = f"{tree.module}.{alias.name}" if tree.module else alias.name
 
+                local_qualifier = f"{parent_qualifier}.{local_name}"
                 self._create_alias(local_qualifier, global_qualifier, session)
 
         else:

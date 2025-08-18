@@ -4,7 +4,7 @@ from alembic import command
 from alembic.config import Config
 from codegraph.utils.logging import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger()
 
 
 def reset_db() -> None:

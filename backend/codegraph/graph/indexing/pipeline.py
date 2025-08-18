@@ -19,21 +19,34 @@ from codegraph.graph.indexing.parsing.base_parser import BaseParser
 from codegraph.graph.models import Language
 
 
-def run_indexing(project_id: int, project_root: Path) -> None:
+def run_indexing(project_name: str, project_root: Path) -> None:
     """
-    Runs the indexing pipeline for a given project. Assumes the `Project` already exists.
+    Runs the complete indexing pipeline for a given project.
     TODO: handle incremental indexing/reindexing after failure
     """
-    # 0. Initialize
+    assert project_root.is_dir()
     project_root = project_root.resolve()
+    skip_pattern = re.compile(DIRECTORY_SKIP_INDEXING_PATTERN)
+
+    # 1. Create `Project` and root `File`
+    with get_session() as session:
+        db_project = Project(name=project_name)
+        session.add(db_project)
+        session.flush()
+
+        project_id = db_project.id
+        root_file = _create_file(project_root, project_id, None, session)
+        db_project.root_file_id = root_file.id
+        session.commit()
+
+    # 2. Initialize parsers
     parsers: dict[Language, BaseParser] = {
         parser_cls._LANGUAGE: parser_cls(project_id, project_root)  # type: ignore[abstract]
         for parser_cls in BaseParser.__subclasses__()
         if parser_cls._LANGUAGE is not None
     }
-    skip_pattern = re.compile(DIRECTORY_SKIP_INDEXING_PATTERN)
 
-    # 1. Traverse from root to create `File`s and track which files to index
+    # 3. Traverse from root to create `File`s and track files to index
     indexing_tasks: list[tuple[Callable[[Path], None], Path]] = []
     path_stack: list[Path] = [project_root]
 
@@ -43,9 +56,9 @@ def run_indexing(project_id: int, project_root: Path) -> None:
 
             # handle directories
             if path.is_dir():
-                if skip_pattern.match(path.name):
+                if skip_pattern.match(path.name) or path == project_root:
                     continue
-                _create_file(path, project_id, project_root, None, session)
+                _create_file(path, project_id, None, session)
                 path_stack.extend(path.iterdir())
                 continue
 
@@ -58,7 +71,7 @@ def run_indexing(project_id: int, project_root: Path) -> None:
             language = CODEGRAPH_SUPPORTED_FILETYPES.get(path.suffix)
             if language is not None:
                 indexing_tasks.append((parsers[language].extract_definitions, path))
-                _create_file(path, project_id, project_root, language, session)
+                _create_file(path, project_id, language, session)
 
             # add vector database indexing task
             if path.suffix in INDEXED_FILETYPES:
@@ -66,18 +79,17 @@ def run_indexing(project_id: int, project_root: Path) -> None:
                 pass
         session.commit()
 
-    # 2. Run indexing tasks in parallel
+    # 4. Run indexing tasks in parallel
     with ThreadPoolExecutor(max_workers=MAX_INDEXING_WORKERS) as executor:
         for task, path in indexing_tasks:
             executor.submit(task, path)
 
 
 def _create_file(
-    filepath: Path, project_id: int, project_root: Path, language: Language | None, session: Session
+    filepath: Path, project_id: int, language: Language | None, session: Session
 ) -> File:
     """
-    Creates a `File` object and adds it to the database. Commits the session. If `filepath` is the
-    project root, it is added to the `Project` object.
+    Creates a `File` object and adds it to the database. Does not commit the session.
     """
     file_stats = filepath.stat()
     created_at = datetime.fromtimestamp(file_stats.st_ctime)
@@ -102,11 +114,5 @@ def _create_file(
     )
     session.add(db_file)
 
-    if filepath == project_root:
-        project = session.get(Project, project_id)
-        assert project is not None
-        assert project.root_file_id is None
-        project.root_file_id = db_file.id
-
-    session.commit()
+    session.flush()
     return db_file

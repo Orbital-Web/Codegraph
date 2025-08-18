@@ -6,5 +6,8 @@ profile = "black"
 line_length = 100
 
 [tool.mypy]
-exclude = "alembic/versions/.*"
+exclude = [
+    "alembic/versions/*",
+    "test_files/*"
+]
 plugins = ["sqlalchemy.ext.mypy.plugin"]
