@@ -1,8 +1,10 @@
 def test_basic(reset: None) -> None:
     # - proj: links to root file
     # - file: links to parent directory & project, skips non-indexed extensions
+    # - node: module node
     # - node: Function and Class nodes
     # - node: nested Function and Class nodes
+    # - TODO: refs: between Function/class nodes and module node
     # - TODO: refs: between nodes of same file
     # - TODO: refs: between nested nodes
     # - TODO: refs: self-referencing (e.g., recursive function, factory class, self type hinting)

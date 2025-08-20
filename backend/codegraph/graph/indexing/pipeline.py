@@ -1,5 +1,5 @@
 import re
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -47,7 +47,9 @@ def run_indexing(project_name: str, project_root: Path) -> None:
     }
 
     # 3. Traverse from root to create `File`s and track files to index
-    indexing_tasks: list[tuple[Callable[[Path], None], Path]] = []
+    cg1_tasks: list[tuple[Callable[[Path], None], Path]] = []
+    cg2_tasks: list[tuple[Callable[[Path], None], Path]] = []
+    vec_paths: list[Path] = []
     path_stack: list[Path] = [project_root]
 
     with get_session() as session:
@@ -67,22 +69,28 @@ def run_indexing(project_name: str, project_root: Path) -> None:
             if filesize > MAX_INDEXING_FILE_SIZE * 1024 * 1024:
                 continue
 
-            # add codegraph indexing task
+            # add codegraph indexing tasks
             language = CODEGRAPH_SUPPORTED_FILETYPES.get(path.suffix)
             if language is not None:
-                indexing_tasks.append((parsers[language].extract_definitions, path))
+                cg1_tasks.append((parsers[language].extract_definitions, path))
+                cg2_tasks.append((parsers[language].extract_references, path))
                 _create_file(path, project_id, language, session)
 
-            # add vector database indexing task
+            # add vector indexing task
             if path.suffix in INDEXED_FILETYPES:
-                # TODO: indexing_tasks.append((INDEXING_FN, path))
-                pass
+                vec_paths.append(path)
         session.commit()
 
-    # 4. Run indexing tasks in parallel
+    # 4. Run indexing tasks
     with ThreadPoolExecutor(max_workers=MAX_INDEXING_WORKERS) as executor:
-        for task, path in indexing_tasks:
-            executor.submit(task, path)
+        cg1_futs = [executor.submit(task, path) for task, path in cg1_tasks]
+        # vec_futs = [executor.submit(VECTOR_INDEX_FN, path) for path in vec_paths]
+
+        # wait for cg1 to finish, then queue cg2
+        wait(cg1_futs)
+        # cg2_futs = [executor.submit(task, path) for task, path in cg2_tasks]
+
+        # wait(cg2_futs + vec_futs)
 
 
 def _create_file(

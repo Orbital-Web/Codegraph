@@ -20,6 +20,7 @@ class PythonParser(BaseParser):
     def extract_definitions(self, filepath: Path) -> None:
         assert filepath.is_file()
 
+        # parse file
         file_text = filepath.read_text(encoding="utf-8")
         try:
             tree = ast.parse(file_text, filename=str(filepath))
@@ -32,10 +33,16 @@ class PythonParser(BaseParser):
         with get_session() as session:
             file = self._find_file(filepath, session)
             assert file is not None
-            self._walk_extract_definitions(tree, file, file_text, module_name, session)
+
+            # create module node (could set definition to file_text if we want)
+            self._create_node(filepath.name, module_name, None, NodeType.MODULE, file, session)
+
+            # create remaining nodes recursively
+            self._walk_extract_definitions(tree, module_name, module_name, file, file_text, session)
             session.commit()
 
     def extract_references(self, filepath: Path) -> None:
+        # TODO:
         pass
 
     # ------------------------- EXTRACT DEFINITION HELPERS ------------------------- #
@@ -49,37 +56,51 @@ class PythonParser(BaseParser):
         return ".".join(parts)
 
     def _walk_extract_definitions(
-        self, tree: ast.AST, file: File, file_text: str, parent_qualifier: str, session: Session
+        self,
+        tree: ast.AST,
+        scope_qualifier: str,
+        file_qualifier: str,
+        file: File,
+        file_text: str,
+        session: Session,
     ) -> None:
         # handle class and function definitions
         if isinstance(tree, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            global_qualifier = f"{parent_qualifier}.{tree.name}"
+            global_qualifier = f"{scope_qualifier}.{tree.name}"
             definition = ast.get_source_segment(file_text, tree)
             node_type = NodeType.CLASS if isinstance(tree, ast.ClassDef) else NodeType.FUNCTION
 
             self._create_node(tree.name, global_qualifier, definition, node_type, file, session)
 
             for child in tree.body:
-                self._walk_extract_definitions(child, file, file_text, global_qualifier, session)
+                self._walk_extract_definitions(
+                    child, global_qualifier, file_qualifier, file, file_text, session
+                )  # child nodes are scoped under this node
 
         # handle imports
         elif isinstance(tree, (ast.Import, ast.ImportFrom)):
             for alias in tree.names:
-                # TODO: handle global_qualifier for relative imports (both Import and ImportFrom)
                 if isinstance(tree, ast.Import):
-                    # abc.py: import x.y as foo -> (abc.foo = x)
-                    local_name = alias.asname or alias.name.split(".", 1)[0]
+                    # abc.py: import x.y as foo -> (abc.foo = x.y)
+                    local_name = alias.asname or alias.name
                     global_qualifier = alias.name
                 else:
                     # abc.py: from x.y import z as bar -> (abc.bar = x.y.z)
                     local_name = alias.asname or alias.name
-                    global_qualifier = f"{tree.module}.{alias.name}" if tree.module else alias.name
+                    parts = [tree.module, alias.name] if tree.module is not None else [alias.name]
 
-                local_qualifier = f"{parent_qualifier}.{local_name}"
+                    # handle local imports
+                    if tree.level > 0:
+                        file_parts = file_qualifier.split(".")
+                        assert len(file_parts) >= tree.level
+                        parts = [*file_parts[: len(file_parts) - tree.level + 1], *parts]
+                    global_qualifier = ".".join(parts)
+
+                local_qualifier = f"{scope_qualifier}.{local_name}"
                 self._create_alias(local_qualifier, global_qualifier, session)
 
         else:
             for child_node in ast.iter_child_nodes(tree):
                 self._walk_extract_definitions(
-                    child_node, file, file_text, parent_qualifier, session
-                )
+                    child_node, scope_qualifier, file_qualifier, file, file_text, session
+                )  # child nodes remain in current scope

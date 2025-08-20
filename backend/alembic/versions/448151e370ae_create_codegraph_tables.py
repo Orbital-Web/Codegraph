@@ -98,9 +98,10 @@ def upgrade() -> None:
         "node__references",
         sa.Column("source_node_id", sa.UUID(), nullable=False),
         sa.Column("target_node_id", sa.UUID(), nullable=False),
+        sa.Column("line_number", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["source_node_id"], ["nodes.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["target_node_id"], ["nodes.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("source_node_id", "target_node_id"),
+        sa.PrimaryKeyConstraint("source_node_id", "target_node_id", "line_number"),
     )
 
 

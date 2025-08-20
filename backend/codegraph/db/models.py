@@ -25,6 +25,7 @@ class Node__Reference(Base):
     target_node_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True
     )
+    line_number: Mapped[int] = mapped_column(Integer, primary_key=True)
 
 
 # ------------------------- TABLES ------------------------- #

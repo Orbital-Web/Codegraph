@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.expression import func
 
 from codegraph.db.models import Alias, File, Node
 from codegraph.graph.models import Language, NodeType
@@ -86,18 +87,28 @@ class BaseParser(ABC):
         Recursively traverses the `Alias` tree to find the `Node` referenced by the
         `local_qualifier`. Returns `None` if the `local_qualifier` is not found.
         """
-        while True:
-            alias = (
-                session.query(Alias)
-                .filter(Alias.local_qualifier == local_qualifier, Alias.project_id == project_id)
-                .one_or_none()
-            )
-            if alias is None:
-                break
-            local_qualifier = alias.global_qualifier
+        parts = local_qualifier.split(".")
 
+        # search for partial or full alias match
+        prefixes = [".".join(parts[:i]) for i in range(len(parts), 0, -1)]
+        alias = (
+            session.query(Alias)
+            .filter(Alias.project_id == project_id, Alias.local_qualifier.in_(prefixes))
+            .order_by(func.char_length(Alias.local_qualifier).desc())
+            .limit(1)
+            .one_or_none()
+        )
+
+        # replace matched portion of alias
+        if alias:
+            prefix = alias.global_qualifier
+            suffix = local_qualifier[len(alias.local_qualifier) :].lstrip(".")
+            new_qualifier = f"{prefix}.{suffix}" if suffix else prefix
+            return BaseParser._resolve_alias(new_qualifier, project_id, session)
+
+        # no alias match, might be a node
         return (
             session.query(Node)
-            .filter(Node.global_qualifier == local_qualifier, Node.project_id == project_id)
+            .filter(Node.project_id == project_id, Node.global_qualifier == local_qualifier)
             .one_or_none()
         )
