@@ -16,7 +16,7 @@
                 "PYTHONPATH": "."
             },
             "presentation": {
-                "group": "run",
+                "group": "1",
             },
         },
         // test
@@ -39,7 +39,7 @@
               //"tests/unit/cli/test_streaming.py"
             ],
             "presentation": {
-              "group": "test"
+              "group": "2"
             },
         },
     ],
