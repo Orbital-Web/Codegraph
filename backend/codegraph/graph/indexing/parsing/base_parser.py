@@ -40,7 +40,7 @@ class BaseParser(ABC):
         """
         return (
             session.query(File)
-            .filter(File.path == filepath, File.project_id == self._project_id)
+            .filter(File.path == filepath.as_posix(), File.project_id == self._project_id)
             .one_or_none()
         )
 

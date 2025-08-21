@@ -5,6 +5,9 @@ line-length = 100
 profile = "black"
 line_length = 100
 
+[tool.autoflake]
+exclude = ["**/test_files/**"]
+
 [tool.mypy]
 exclude = [
     "alembic/versions/*",

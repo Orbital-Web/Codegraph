@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime
-from pathlib import Path
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -42,9 +41,10 @@ class Project(Base):
     root_file_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("files.id"))
 
     # relationships
-    root_file: Mapped["File | None"] = relationship(foreign_keys=[root_file_id])
+    root_file: Mapped["File | None"] = relationship(foreign_keys=[root_file_id], uselist=False)
     files: Mapped[list["File"]] = relationship(
         back_populates="project",
+        foreign_keys="File.project_id",
         cascade="all, delete-orphan",
         single_parent=True,
         passive_deletes=True,
@@ -68,7 +68,7 @@ class File(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String)
-    path: Mapped[Path] = mapped_column(String)
+    path: Mapped[str] = mapped_column(String)
     language: Mapped[Language | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
@@ -81,7 +81,7 @@ class File(Base):
     children: Mapped[list["File"]] = relationship(
         back_populates="parent", passive_deletes=True, single_parent=True
     )
-    project: Mapped["Project"] = relationship(back_populates="files")
+    project: Mapped["Project"] = relationship(back_populates="files", foreign_keys=[project_id])
     nodes: Mapped[list["Node"]] = relationship(
         back_populates="file",
         cascade="all, delete-orphan",

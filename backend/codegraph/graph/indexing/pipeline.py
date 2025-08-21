@@ -16,7 +16,14 @@ from codegraph.configs.indexing import (
 from codegraph.db.engine import get_session
 from codegraph.db.models import File, Project
 from codegraph.graph.indexing.parsing.base_parser import BaseParser
+from codegraph.graph.indexing.parsing.python_parser import PythonParser
 from codegraph.graph.models import Language
+from codegraph.utils.logging import get_logger
+
+logger = get_logger()
+
+# NOTE: make sure to update this when creating a new parser
+PARSER_CLASSES = [PythonParser]
 
 
 def run_indexing(project_name: str, project_root: Path) -> None:
@@ -41,8 +48,8 @@ def run_indexing(project_name: str, project_root: Path) -> None:
 
     # 2. Initialize parsers
     parsers: dict[Language, BaseParser] = {
-        parser_cls._LANGUAGE: parser_cls(project_id, project_root)  # type: ignore[abstract]
-        for parser_cls in BaseParser.__subclasses__()
+        parser_cls._LANGUAGE: parser_cls(project_id, project_root)
+        for parser_cls in PARSER_CLASSES
         if parser_cls._LANGUAGE is not None
     }
 
@@ -58,9 +65,10 @@ def run_indexing(project_name: str, project_root: Path) -> None:
 
             # handle directories
             if path.is_dir():
-                if skip_pattern.match(path.name) or path == project_root:
+                if skip_pattern.match(path.name):
                     continue
-                _create_file(path, project_id, None, session)
+                if path != project_root:
+                    _create_file(path, project_id, None, session)
                 path_stack.extend(path.iterdir())
                 continue
 
@@ -82,6 +90,10 @@ def run_indexing(project_name: str, project_root: Path) -> None:
         session.commit()
 
     # 4. Run indexing tasks
+    logger.info(
+        f"Starting codegraph indexing of {len(cg1_tasks)} files and "
+        f"vector indexing of {len(vec_paths)} files."
+    )
     with ThreadPoolExecutor(max_workers=MAX_INDEXING_WORKERS) as executor:
         cg1_futs = [executor.submit(task, path) for task, path in cg1_tasks]
         # vec_futs = [executor.submit(VECTOR_INDEX_FN, path) for path in vec_paths]
@@ -106,14 +118,14 @@ def _create_file(
     parent_path = filepath.parent
     parent = (
         session.query(File)
-        .filter(File.path == parent_path, File.project_id == project_id)
+        .filter(File.path == parent_path.as_posix(), File.project_id == project_id)
         .one_or_none()
     )
     parent_id = parent.id if parent else None
 
     db_file = File(
         name=filepath.name,
-        path=filepath,
+        path=filepath.as_posix(),
         language=language,
         created_at=created_at,
         updated_at=updated_at,
