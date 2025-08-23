@@ -1,9 +1,11 @@
 [tool.black]
 line-length = 100
+extend-exclude = "(^|.*/)test_files/.*"
 
 [tool.isort]
 profile = "black"
 line_length = 100
+skip_glob = ["**/test_files/**"]
 
 [tool.autoflake]
 exclude = ["**/test_files/**"]
