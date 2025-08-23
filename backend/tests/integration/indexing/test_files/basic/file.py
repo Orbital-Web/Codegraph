@@ -29,10 +29,13 @@ def parent_fn(y) -> int:
         # file.parent_fn.ChildClass -> file.SimpleClass (cls, cls)
         pass
 
-    def child_fn(x: int) -> int:
+    def child_fn(x: int, z: SimpleClass) -> int:
         # file.parent_fn.child_fn
         # file.parent_fn -> file.parent_fn.child_fn (fn, fn)
-        return x * x
+        # file.parent_fn -> file.SimpleClass (fn, cls)
+
+        # file.parent_fn -> file.SimpleClass.simple_method (fn, fn)
+        return x * x + z.simple_method()
 
     # file.parent_fn -> file.parent_fn.child_fn (fn, fn)
     return y + child_fn(y)

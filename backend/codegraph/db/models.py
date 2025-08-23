@@ -26,6 +26,11 @@ class Node__Reference(Base):
     )
     line_number: Mapped[int] = mapped_column(Integer, primary_key=True)
 
+    __table_args__ = (
+        Index("ix_source_node", "source_node_id"),
+        Index("ix_target_node", "target_node_id"),
+    )
+
 
 # ------------------------- TABLES ------------------------- #
 
@@ -115,18 +120,6 @@ class Node(Base):
     # relationships
     file: Mapped["File"] = relationship(back_populates="nodes")
     project: Mapped["Project"] = relationship(back_populates="nodes")
-    references: Mapped[list["Node"]] = relationship(
-        secondary=Node__Reference.__table__,
-        primaryjoin=(id == Node__Reference.source_node_id),
-        secondaryjoin=(id == Node__Reference.target_node_id),
-        back_populates="referenced_by",
-    )
-    referenced_by: Mapped[list["Node"]] = relationship(
-        secondary=Node__Reference.__table__,
-        primaryjoin=(id == Node__Reference.target_node_id),
-        secondaryjoin=(id == Node__Reference.source_node_id),
-        back_populates="references",
-    )
 
     __table_args__ = (
         Index("ix_nodes_name_project", "name", "project_id"),

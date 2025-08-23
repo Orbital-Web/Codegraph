@@ -42,10 +42,26 @@ class PythonParser(BaseParser):
             session.commit()
 
     def extract_references(self, filepath: Path) -> None:
-        # TODO:
-        pass
+        assert filepath.is_file()
 
-    # ------------------------- EXTRACT DEFINITION HELPERS ------------------------- #
+        # parse file
+        file_text = filepath.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(file_text, filename=str(filepath))
+        except SyntaxError:
+            logger.warning(f"Syntax error in {filepath}, skipping")
+            return
+
+        module_name = self._get_module_name(filepath)
+
+        with get_session() as session:
+            file = self._find_file(filepath, session)
+            assert file is not None
+
+            self._walk_extract_references(tree, module_name, module_name, file, session)
+            session.commit()
+
+    # ------------------------- HELPERS ------------------------- #
 
     def _get_module_name(self, filepath: Path) -> str:
         rel = filepath.relative_to(self._project_root).with_suffix("")
@@ -54,6 +70,27 @@ class PythonParser(BaseParser):
         if parts[-1] == "__init__":
             parts = parts[:-1]
         return ".".join(parts)
+
+    def _create_alias_from_import(
+        self, tree: ast.Import | ast.ImportFrom, file_qualifier: str, session: Session
+    ) -> None:
+        for alias in tree.names:
+            if isinstance(tree, ast.Import):
+                # abc.py: import x.y as foo -> (abc.foo = x.y)
+                local_name = alias.asname or alias.name
+                global_qualifier = alias.name
+            else:
+                # abc.py: from x.y import z as bar -> (abc.bar = x.y.z)
+                local_name = alias.asname or alias.name
+                parts = [tree.module, alias.name] if tree.module is not None else [alias.name]
+
+                # handle local imports
+                if tree.level > 0:
+                    parts = [*file_qualifier.split(".")[: -tree.level], *parts]
+                global_qualifier = ".".join(parts)
+
+            local_qualifier = f"{file_qualifier}.{local_name}"
+            self._create_alias(local_qualifier, global_qualifier, session)
 
     def _walk_extract_definitions(
         self,
@@ -79,28 +116,20 @@ class PythonParser(BaseParser):
 
         # handle imports
         elif isinstance(tree, (ast.Import, ast.ImportFrom)):
-            for alias in tree.names:
-                if isinstance(tree, ast.Import):
-                    # abc.py: import x.y as foo -> (abc.foo = x.y)
-                    local_name = alias.asname or alias.name
-                    global_qualifier = alias.name
-                else:
-                    # abc.py: from x.y import z as bar -> (abc.bar = x.y.z)
-                    local_name = alias.asname or alias.name
-                    parts = [tree.module, alias.name] if tree.module is not None else [alias.name]
-
-                    # handle local imports
-                    if tree.level > 0:
-                        file_parts = file_qualifier.split(".")
-                        assert len(file_parts) >= tree.level
-                        parts = [*file_parts[: len(file_parts) - tree.level + 1], *parts]
-                    global_qualifier = ".".join(parts)
-
-                local_qualifier = f"{scope_qualifier}.{local_name}"
-                self._create_alias(local_qualifier, global_qualifier, session)
+            self._create_alias_from_import(tree, file_qualifier, session)
 
         else:
             for child_node in ast.iter_child_nodes(tree):
                 self._walk_extract_definitions(
                     child_node, scope_qualifier, file_qualifier, file, file_text, session
                 )  # child nodes remain in current scope
+
+    def _walk_extract_references(
+        self,
+        tree: ast.AST,
+        scope_qualifier: str,
+        file_qualifier: str,
+        file: File,
+        session: Session,
+    ) -> None:
+        pass

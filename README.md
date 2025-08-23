@@ -1,8 +1,17 @@
 # CodeGraph
 
-TODO: Description
+CodeGraph is a CLI-based AI coding assistant that can index your workspace to answer questions about the codebase and fix/write code. It uses an agentic AI flow with access to a variety of MCP tools plus a custom graph (codegraph) of function/classes/modules and their relationships to effectively answer user queries.
+
+The codegraph currently only supports `Python`, although there are other tools that allow the agent to still find relevent information to answer questions. The supported languages for semantic lookup will depend on the embedding model being used. The default model, [codet5p-110m-embedding](https://huggingface.co/Salesforce/codet5p-110m-embedding) supports `Python`, `C`, `C++`, `Go`, `Java`, `JavaScript`, `PHP`, and `Ruby`.
+
+The project uses `LangGraph` for the agent, `Postgres` for the codegraph and other tables (+`Alembic` for versioning), and `Chroma` for the vectorstore.
+<!-- + LiteLLM for managing different models -->
+
+<!-- TODO: insert GIF/video here -->
 
 ## Features:
+<!-- list overall, tools, cli, and indexing functionalities -->
+<!-- maybe talk about tests + github actions -->
 - TODO: 1
 - TODO: 2
 
@@ -24,6 +33,7 @@ TODO: Description
    pip install -r requirements.txt
    ```
 
+<!-- TODO: add instructions on the .env file and required environmental variables -->
 3. If you are using VSCode and want to run a debug instance, go to `Run` and launch `CodeGraph CLI`.
 
    Otherwise, make sure you are in `/backend` and run
@@ -42,3 +52,5 @@ TODO: Description
    ```
 
    So that the next time you commit, it automatically takes care of linting.
+
+<!-- TODO: add known limitations and potential future features -->

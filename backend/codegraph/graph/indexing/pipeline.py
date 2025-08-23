@@ -100,9 +100,9 @@ def run_indexing(project_name: str, project_root: Path) -> None:
 
         # wait for cg1 to finish, then queue cg2
         wait(cg1_futs)
-        # cg2_futs = [executor.submit(task, path) for task, path in cg2_tasks]
+        cg2_futs = [executor.submit(task, path) for task, path in cg2_tasks]
 
-        # wait(cg2_futs + vec_futs)
+        wait(cg2_futs)  # + vec_futs
 
 
 def _create_file(
