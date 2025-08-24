@@ -22,3 +22,8 @@ class Language(str, Enum):
     RUBY = "ruby"
     RUST = "rust"
     TYPESCRIPT = "typescript"
+
+
+class IndexingStep(str, Enum):
+    DEFINITIONS = "definitions"
+    REFERENCES = "references"

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from sqlalchemy.orm import aliased
 
 from codegraph.db.engine import get_session
 from codegraph.db.models import File, Node, Node__Reference, Project
@@ -34,7 +35,15 @@ def test_basic(reset: None) -> None:
         projs = session.query(Project).all()
         files = session.query(File).all()
         nodes = session.query(Node).all()
-        refs = session.query(Node__Reference).all()
+
+        source_node = aliased(Node)
+        target_node = aliased(Node)
+        refs = (
+            session.query(Node__Reference, source_node, target_node)
+            .join(source_node, Node__Reference.source_node_id == source_node.id)
+            .join(target_node, Node__Reference.target_node_id == target_node.id)
+            .all()
+        )
 
     assert len(projs) == 1
     proj = projs[0]
@@ -88,27 +97,29 @@ def test_basic(reset: None) -> None:
         else:
             assert node.type == NodeType.FUNCTION
 
-    refs_map = {(ref.source_node_id, ref.target_node_id, ref.line_number): ref for ref in refs}
+    refs_map: dict[tuple[str, str, int], Node__Reference] = {
+        (sn.global_qualifier, tn.global_qualifier, ref.line_number): ref for (ref, sn, tn) in refs
+    }
     assert refs_map.keys() == {
         ("file", "file.simple_fn", 4),
         ("file", "file.SimpleClass", 9),
         ("file", "file.SimpleClass.__init__", 12),
+        ("file.SimpleClass", "file.SimpleClass.__init__", 12),
         ("file", "file.SimpleClass.simple_method", 17),
+        ("file.SimpleClass", "file.SimpleClass.simple_method", 17),
         ("file", "file.parent_fn", 23),
         ("file", "file.parent_fn.ChildClass", 26),
-        ("file", "file.parent_fn.child_fn", 32),
-        ("file", "file.recursive_fn", 44),
-        ("file", "file.ParentClass", 51),
-        ("file", "file.ParentClass.ChildClass", 54),
-        ("file.SimpleClass", "file.SimpleClass.__init__", 12),
-        ("file.SimpleClass", "file.SimpleClass.simple_method", 17),
         ("file.parent_fn", "file.parent_fn.ChildClass", 26),
-        ("file.parent_fn", "file.parent_fn.child_fn", 32),
-        ("file.parent_fn", "file.parent_fn.ChildClass", 41),
         ("file.parent_fn.ChildClass", "file.SimpleClass", 26),
+        ("file", "file.parent_fn.child_fn", 32),
+        ("file.parent_fn", "file.parent_fn.child_fn", 32),
         ("file.parent_fn.child_fn", "file.SimpleClass", 32),
         ("file.parent_fn.child_fn", "file.SimpleClass.simple_method", 38),
+        ("file.parent_fn", "file.parent_fn.ChildClass", 41),
+        ("file", "file.recursive_fn", 44),
         ("file.recursive_fn", "file.recursive_fn", 48),
+        ("file", "file.ParentClass", 51),
+        ("file", "file.ParentClass.ChildClass", 54),
         ("file.ParentClass", "file.ParentClass.ChildClass", 54),
     }
 
@@ -143,4 +154,8 @@ def test_basic_import(reset: None) -> None:
 # - refs: through relative imports (with/without alias)
 # - refs: through mix of relative and global imports (with/without alias)
 # - refs: through `import module.node`, usage `module.node`
+# - refs: through chained import in __init__ file
+# - refs: through chained import in other files
+# - refs: module root below project root
+# - refs: from class reference (e.g., `classes = [Class]`)
 # - refs: from class & static method calls (e.g., `Class.method()`)

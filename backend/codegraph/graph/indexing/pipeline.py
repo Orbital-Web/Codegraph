@@ -2,7 +2,6 @@ import re
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
 
 from sqlalchemy.orm import Session
 
@@ -15,15 +14,20 @@ from codegraph.configs.indexing import (
 )
 from codegraph.db.engine import get_session
 from codegraph.db.models import File, Project
-from codegraph.graph.indexing.parsing.base_parser import BaseParser
 from codegraph.graph.indexing.parsing.python_parser import PythonParser
-from codegraph.graph.models import Language
+from codegraph.graph.models import IndexingStep, Language
 from codegraph.utils.logging import get_logger
 
 logger = get_logger()
 
-# NOTE: make sure to update this when creating a new parser
+# NOTE: make sure to update `PARSER_CLASSES` when creating a new parser
 PARSER_CLASSES = [PythonParser]
+
+_PARSER_CLASSES_BY_LANGUAGE = {
+    parser_cls._LANGUAGE: parser_cls
+    for parser_cls in PARSER_CLASSES
+    if parser_cls._LANGUAGE is not None
+}
 
 
 def run_indexing(project_name: str, project_root: Path) -> None:
@@ -46,21 +50,25 @@ def run_indexing(project_name: str, project_root: Path) -> None:
         db_project.root_file_id = root_file.id
         session.commit()
 
-    # 2. Initialize parsers
-    parsers: dict[Language, BaseParser] = {
-        parser_cls._LANGUAGE: parser_cls(project_id, project_root)
-        for parser_cls in PARSER_CLASSES
-        if parser_cls._LANGUAGE is not None
-    }
+    # 2. Create cg indexing wrapper
+    def _cg_indexing_wrapper(filepath: Path, language: Language, step: IndexingStep) -> None:
+        with get_session() as session:
+            parser_cls = _PARSER_CLASSES_BY_LANGUAGE[language]
+            parser = parser_cls(project_id, project_root, filepath, session)
+
+            if step == IndexingStep.DEFINITIONS:
+                parser.extract_definitions()
+            elif step == IndexingStep.REFERENCES:
+                parser.extract_references()
+            session.commit()
 
     # 3. Traverse from root to create `File`s and track languages + files to index
-    cg1_tasks: list[tuple[Callable[[Path], None], Path]] = []
-    cg2_tasks: list[tuple[Callable[[Path], None], Path]] = []
-    vec_paths: list[Path] = []
+    cg_tasks: list[tuple[Path, Language]] = []
+    vec_tasks: list[Path] = []
     project_languages: set[Language] = set()
-    path_stack: list[Path] = [project_root]
 
     with get_session() as session:
+        path_stack: list[Path] = [project_root]
         while path_stack:
             path = path_stack.pop()
 
@@ -82,33 +90,36 @@ def run_indexing(project_name: str, project_root: Path) -> None:
             language = FILETYPE_LANGUAGES.get(path.suffix)
             if language is not None:
                 project_languages.add(language)
-                if language in parsers:
-                    cg1_tasks.append((parsers[language].extract_definitions, path))
-                    cg2_tasks.append((parsers[language].extract_references, path))
+                if language in _PARSER_CLASSES_BY_LANGUAGE:
+                    cg_tasks.append((path, language))
                     _create_file(path, project_id, language, session)
 
             # add vector indexing task
             if path.suffix in VECTOR_INDEXED_FILETYPES:
-                vec_paths.append(path)
+                vec_tasks.append(path)
 
-        db_project = session.get(Project, project_id)
-        assert db_project is not None
+        db_project = session.query(Project).filter(Project.id == project_id).one()
         db_project.languages = list(project_languages)
         session.commit()
 
     # 4. Run indexing tasks
     logger.info(
-        f"Starting codegraph indexing of {len(cg1_tasks)} files and "
-        f"vector indexing of {len(vec_paths)} files."
+        f"Starting codegraph indexing of {len(cg_tasks)} files and "
+        f"vector indexing of {len(vec_tasks)} files."
     )
     with ThreadPoolExecutor(max_workers=MAX_INDEXING_WORKERS) as executor:
-        cg1_futs = [executor.submit(task, path) for task, path in cg1_tasks]
-        # vec_futs = [executor.submit(VECTOR_INDEX_FN, path) for path in vec_paths]
+        cg1_futs = [
+            executor.submit(_cg_indexing_wrapper, path, language, IndexingStep.DEFINITIONS)
+            for path, language in cg_tasks
+        ]
+        # vec_futs = [executor.submit(VECTOR_INDEX_FN, path) for path in vec_tasks]
 
         # wait for cg1 to finish, then queue cg2
         wait(cg1_futs)
-        cg2_futs = [executor.submit(task, path) for task, path in cg2_tasks]
-
+        cg2_futs = [
+            executor.submit(_cg_indexing_wrapper, path, language, IndexingStep.REFERENCES)
+            for path, language in cg_tasks
+        ]
         wait(cg2_futs)  # + vec_futs
 
 
