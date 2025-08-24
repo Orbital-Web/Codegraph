@@ -8,4 +8,17 @@ class NodeType(str, Enum):
 
 
 class Language(str, Enum):
+    C = "c"
+    CPP = "cpp"
+    CSHARP = "csharp"
+    CSS = "css"
+    GO = "go"
+    HTML = "html"
+    JAVA = "java"
+    JAVASCRIPT = "javascript"
+    PHP = "php"
     PYTHON = "python"
+    R = "r"
+    RUBY = "ruby"
+    RUST = "rust"
+    TYPESCRIPT = "typescript"

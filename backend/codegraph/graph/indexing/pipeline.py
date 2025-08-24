@@ -7,11 +7,11 @@ from typing import Callable
 from sqlalchemy.orm import Session
 
 from codegraph.configs.indexing import (
-    CODEGRAPH_SUPPORTED_FILETYPES,
     DIRECTORY_SKIP_INDEXING_PATTERN,
-    INDEXED_FILETYPES,
+    FILETYPE_LANGUAGES,
     MAX_INDEXING_FILE_SIZE,
     MAX_INDEXING_WORKERS,
+    VECTOR_INDEXED_FILETYPES,
 )
 from codegraph.db.engine import get_session
 from codegraph.db.models import File, Project
@@ -53,10 +53,11 @@ def run_indexing(project_name: str, project_root: Path) -> None:
         if parser_cls._LANGUAGE is not None
     }
 
-    # 3. Traverse from root to create `File`s and track files to index
+    # 3. Traverse from root to create `File`s and track languages + files to index
     cg1_tasks: list[tuple[Callable[[Path], None], Path]] = []
     cg2_tasks: list[tuple[Callable[[Path], None], Path]] = []
     vec_paths: list[Path] = []
+    project_languages: set[Language] = set()
     path_stack: list[Path] = [project_root]
 
     with get_session() as session:
@@ -78,15 +79,21 @@ def run_indexing(project_name: str, project_root: Path) -> None:
                 continue
 
             # add codegraph indexing tasks
-            language = CODEGRAPH_SUPPORTED_FILETYPES.get(path.suffix)
+            language = FILETYPE_LANGUAGES.get(path.suffix)
             if language is not None:
-                cg1_tasks.append((parsers[language].extract_definitions, path))
-                cg2_tasks.append((parsers[language].extract_references, path))
-                _create_file(path, project_id, language, session)
+                project_languages.add(language)
+                if language in parsers:
+                    cg1_tasks.append((parsers[language].extract_definitions, path))
+                    cg2_tasks.append((parsers[language].extract_references, path))
+                    _create_file(path, project_id, language, session)
 
             # add vector indexing task
-            if path.suffix in INDEXED_FILETYPES:
+            if path.suffix in VECTOR_INDEXED_FILETYPES:
                 vec_paths.append(path)
+
+        db_project = session.get(Project, project_id)
+        assert db_project is not None
+        db_project.languages = list(project_languages)
         session.commit()
 
     # 4. Run indexing tasks

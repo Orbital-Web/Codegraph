@@ -9,38 +9,39 @@ DIRECTORY_SKIP_INDEXING_PATTERN = os.getenv(
     "DIRECTORY_SKIP_INDEXING_PATTERN", r"^\..*|^__[A-Za-z]*__$|^node_modules$"
 )
 
-CODEGRAPH_SUPPORTED_FILETYPES: dict[str, Language] = {
+FILETYPE_LANGUAGES: dict[str, Language] = {
+    ".c": Language.C,
+    ".h": Language.C,
+    ".cpp": Language.CPP,
+    ".hpp": Language.CPP,
+    ".cs": Language.CSHARP,
+    ".css": Language.CSS,
+    "scss": Language.CSS,
+    "sass": Language.CSS,
+    ".go": Language.GO,
+    ".html": Language.HTML,
+    ".java": Language.JAVA,
+    ".js": Language.JAVASCRIPT,
+    ".jsx": Language.JAVASCRIPT,
+    ".php": Language.PHP,
     ".py": Language.PYTHON,
+    ".r": Language.R,
+    ".rb": Language.RUBY,
+    ".rs": Language.RUST,
+    ".ts": Language.TYPESCRIPT,
+    ".tsx": Language.TYPESCRIPT,
 }
 
-INDEXED_FILETYPES: set[str] = {
+VECTOR_INDEXED_FILETYPES: set[str] = {
     # text documents
     ".txt",
     ".md",
     # code
-    ".py",  # python
-    ".cpp",  # c/c++
-    ".c",
-    ".hpp",
-    ".h",
-    ".sh",  # shell
+    *FILETYPE_LANGUAGES.keys(),
+    # shell
+    ".sh",
     ".zsh",
     ".bash",
-    ".js",  # javascript
-    ".jsx",
-    ".ts",  # typescript
-    ".tsx",
-    ".rs",  # rust
-    ".cs",  # c#
-    ".java",  # java
-    ".go",  # golang
-    ".r",  # r
-    ".html",  # html/css
-    ".css",
-    ".scss",
-    ".sass",
-    ".php",  # php
-    ".rb",  # ruby
     # config
     ".conf",
     ".ini",
