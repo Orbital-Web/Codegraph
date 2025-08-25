@@ -30,14 +30,19 @@ _PARSER_CLASSES_BY_LANGUAGE = {
 }
 
 
-def run_indexing(project_name: str, project_root: Path) -> None:
+def run_indexing(
+    project_name: str,
+    project_root: Path,
+    directory_skip_pattern: str = DIRECTORY_SKIP_INDEXING_PATTERN,
+    max_filesize: int = MAX_INDEXING_FILE_SIZE,
+) -> None:
     """
     Runs the complete indexing pipeline for a given project.
     TODO: handle incremental indexing/reindexing after failure
     """
     assert project_root.is_dir()
     project_root = project_root.resolve()
-    skip_pattern = re.compile(DIRECTORY_SKIP_INDEXING_PATTERN)
+    skip_pattern = re.compile(directory_skip_pattern)
 
     # 1. Create `Project` and root `File`
     with get_session() as session:
@@ -83,7 +88,7 @@ def run_indexing(project_name: str, project_root: Path) -> None:
 
             # handle files
             filesize = path.stat().st_size
-            if filesize > MAX_INDEXING_FILE_SIZE * 1024 * 1024:
+            if filesize > max_filesize * 1024 * 1024:
                 continue
 
             # add codegraph indexing tasks

@@ -34,16 +34,16 @@ class BaseParser(ABC):
     @abstractmethod
     def extract_definitions(self) -> None:
         """
-        Extracts defined `Node`s from the file and adds them to the database. Also extracts
-        `Alias`es for global reference resolution in the next step. Its internal variables are only
-        visible to this parser.
+        Extracts defined `Node`s, definition `Node__Reference`s, and `Alias`es in the file. Its
+        internal variables are only visible to this parser.
         """
 
     @abstractmethod
     def extract_references(self) -> None:
         """
-        Extracts `Node__Reference`s from the file and adds them to the database. Its internal
-        variables are only visible to this parser.
+        Extracts `Node__Reference`s between `Node`s defined both in and outside this file. Its
+        internal variables are only visible to this parser. Always runs after `extract_definitions`
+        runs for all files in the project.
         """
 
     def _find_node(self, global_qualifier: str) -> Node | None:
