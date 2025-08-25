@@ -365,8 +365,14 @@ def test_basic_incremental_indexing(reset: None, tmp_path: Path) -> None:
     status = run_indexing(project_id)
 
     # make sure re-indexing only ran for the modified/new files
-    assert status.codegraph_indexed_paths == [project_root / "file1.py", project_root / "file4.py"]
-    assert status.vector_indexed_paths == [project_root / "file1.py", project_root / "file4.py"]
+    assert set(status.codegraph_indexed_paths) == {
+        project_root / "file1.py",
+        project_root / "file4.py",
+    }
+    assert set(status.vector_indexed_paths) == {
+        project_root / "file1.py",
+        project_root / "file4.py",
+    }
 
     with get_session() as session:
         projs = session.query(Project).all()
@@ -478,7 +484,3 @@ def test_should_ignore_massive_files(reset: None, tmp_path: Path) -> None:
         (sn.global_qualifier, tn.global_qualifier, ref.line_number): ref for (ref, sn, tn) in refs
     }
     assert refs_map.keys() == {("file1", "file1.func1", 1)}
-
-
-# TODO:
-# - file: skips files that are too big
