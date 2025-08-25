@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 from codegraph.configs.indexing import (
     DIRECTORY_SKIP_INDEXING_PATTERN,
     FILETYPE_LANGUAGES,
+    INDEXED_FILETYPES,
     MAX_INDEXING_FILE_SIZE,
     MAX_INDEXING_WORKERS,
-    VECTOR_INDEXED_FILETYPES,
 )
 from codegraph.db.engine import get_session
 from codegraph.db.models import File, Project
@@ -44,7 +44,7 @@ def create_project(project_name: str, project_root: Path) -> int:
         session.flush()
 
         project_id = db_project.id
-        root_file = _create_file(project_root, project_id, None, session)
+        root_file = _create_file(project_root, project_id, None, None, session)
         db_project.root_file_id = root_file.id
         session.commit()
 
@@ -57,16 +57,26 @@ def run_indexing(
     max_filesize: int = MAX_INDEXING_FILE_SIZE,
 ) -> None:
     """
-    Runs the complete indexing pipeline for a given project.
-    TODO: handle incremental indexing/reindexing after failure
+    Runs the complete (re)indexing pipeline for a given project.
     """
+    indexing_start_time = datetime.now()
+
     with get_session() as session:
         # 1. Find project root
         db_project = session.query(Project).filter(Project.id == project_id).one()
         project_root = Path(db_project.root_path)
-        # TODO: if project root is deleted, delete the project
+        root_file = db_project.root_file
+        assert root_file is not None
+        assert root_file.path == project_root.as_posix()
 
-        # 2. Create cg indexing wrapper
+        # 2. Delete project if root no longer exists, otherwise update last indexed time
+        if not project_root.exists():
+            session.delete(db_project)
+            session.commit()
+            return
+        root_file.last_indexed_at = datetime.now()
+
+        # 3. Create cg indexing wrapper
         def _cg_indexing_wrapper(filepath: Path, language: Language, step: IndexingStep) -> None:
             with get_session() as cg_session:
                 parser_cls = _PARSER_CLASSES_BY_LANGUAGE[language]
@@ -78,47 +88,72 @@ def run_indexing(
                     parser.extract_references()
                 cg_session.commit()
 
-        # 3. Traverse from root to create `File`s and track languages + files to index
+        # 4. Traverse from root to find new/modified `File`s and track indexing tasks + languages
         cg_tasks: list[tuple[Path, Language]] = []
         vec_tasks: list[Path] = []
         project_languages: set[Language] = set()
 
         skip_pattern = re.compile(directory_skip_pattern)
-        path_stack: list[Path] = [project_root]
+        stack: list[tuple[Path, File]] = [(path, root_file) for path in project_root.iterdir()]
+        while stack:
+            path, parent_file = stack.pop()
 
-        while path_stack:
-            path = path_stack.pop()
-
-            # handle directories
-            if path.is_dir():
-                if skip_pattern.match(path.name):
-                    continue
-                if path != project_root:
-                    _create_file(path, project_id, None, session)
-                path_stack.extend(path.iterdir())
+            # check for skip conditions
+            if (
+                (path.is_dir() and skip_pattern.match(path.name))
+                or (path.is_file() and path.stat().st_size > max_filesize * 1024 * 1024)
+                or (path.is_file() and path.suffix not in INDEXED_FILETYPES)
+            ):
                 continue
 
-            # handle files
-            filesize = path.stat().st_size
-            if filesize > max_filesize * 1024 * 1024:
-                continue
-
-            # add codegraph indexing tasks
             language = FILETYPE_LANGUAGES.get(path.suffix)
             if language is not None:
                 project_languages.add(language)
-                if language in _PARSER_CLASSES_BY_LANGUAGE:
-                    cg_tasks.append((path, language))
-                    _create_file(path, project_id, language, session)
 
-            # add vector indexing task
-            if path.suffix in VECTOR_INDEXED_FILETYPES:
-                vec_tasks.append(path)
+            current_file = _find_file(path, project_id, session)
+            run_indexing = False
 
+            # delete `File` if it's a file and has been modified since last indexed
+            if (
+                current_file is not None
+                and path.is_file()
+                and current_file.updated_at > current_file.last_indexed_at
+            ):
+                session.delete(current_file)
+                current_file = None
+                run_indexing = True
+
+            # create file if not previously indexed
+            if current_file is None:
+                if path.is_dir():
+                    current_file = _create_file(path, project_id, parent_file, None, session)
+                    stack.extend((path, current_file) for path in path.iterdir())
+                    continue
+
+                current_file = _create_file(path, project_id, parent_file, language, session)
+                run_indexing = True
+
+            # update `File` last indexed time
+            current_file.last_indexed_at = datetime.now()
+
+            # add codegraph and vector indexing tasks
+            if not run_indexing:
+                continue
+            if language in _PARSER_CLASSES_BY_LANGUAGE:
+                cg_tasks.append((path, language))
+            vec_tasks.append(path)
+
+        # delete files that haven't been touched
+        session.query(File).filter(
+            File.project_id == project_id, File.last_indexed_at < indexing_start_time
+        ).delete(synchronize_session=False)
+
+        # update project languages
         db_project.languages = list(project_languages)
+
         session.commit()
 
-    # 4. Run indexing tasks
+    # 5. Run indexing tasks
     logger.info(
         f"Starting codegraph indexing of {len(cg_tasks)} files and "
         f"vector indexing of {len(vec_tasks)} files."
@@ -151,7 +186,11 @@ def _find_file(filepath: Path, project_id: int, session: Session) -> File | None
 
 
 def _create_file(
-    filepath: Path, project_id: int, language: Language | None, session: Session
+    filepath: Path,
+    project_id: int,
+    parent: File | None,
+    language: Language | None,
+    session: Session,
 ) -> File:
     """
     Creates a `File` object and adds it to the database. Does not commit the session.
@@ -160,16 +199,13 @@ def _create_file(
     created_at = datetime.fromtimestamp(file_stats.st_ctime)
     updated_at = datetime.fromtimestamp(file_stats.st_mtime)
 
-    parent = _find_file(filepath.parent, project_id, session)
-    parent_id = parent.id if parent else None
-
     db_file = File(
         name=filepath.name,
         path=filepath.as_posix(),
         language=language,
         created_at=created_at,
         updated_at=updated_at,
-        parent_id=parent_id,
+        parent_id=parent.id if parent is not None else None,
         project_id=project_id,
     )
     session.add(db_file)

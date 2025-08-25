@@ -32,7 +32,7 @@ FILETYPE_LANGUAGES: dict[str, Language] = {
     ".tsx": Language.TYPESCRIPT,
 }
 
-VECTOR_INDEXED_FILETYPES: set[str] = {
+INDEXED_FILETYPES: set[str] = {
     # text documents
     ".txt",
     ".md",

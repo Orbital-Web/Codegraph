@@ -81,6 +81,7 @@ class File(Base):
     language: Mapped[Language | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    last_indexed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"))
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
@@ -98,13 +99,10 @@ class File(Base):
         passive_deletes=True,
     )
 
-    @property
-    def is_directory(self) -> bool:
-        return len(self.children) > 0
-
     __table_args__ = (
         Index("ix_files_project", "project_id"),
         Index("ix_files_parent", "parent_id"),
+        Index("ix_files_project_last_indexed_at", "project_id", "last_indexed_at"),
         UniqueConstraint("path", "project_id", name="uq_files_path_project"),
     )
 
