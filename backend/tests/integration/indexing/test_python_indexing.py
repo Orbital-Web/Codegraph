@@ -4,7 +4,7 @@ from sqlalchemy.orm import aliased
 
 from codegraph.db.engine import get_session
 from codegraph.db.models import Alias, File, Node, Node__Reference, Project
-from codegraph.graph.indexing.pipeline import run_indexing
+from codegraph.graph.indexing.pipeline import create_project, run_indexing
 from codegraph.graph.models import Language, NodeType
 
 
@@ -22,7 +22,8 @@ def test_basic(reset: None) -> None:
     """
     project_name = "cool project"
     project_root = Path(__file__).parent / "test_files" / "basic"
-    run_indexing(project_name, project_root)
+    project_id = create_project(project_name, project_root)
+    run_indexing(project_id)
 
     with get_session() as session:
         projs = session.query(Project).all()
@@ -41,6 +42,7 @@ def test_basic(reset: None) -> None:
 
     assert len(projs) == 1
     proj = projs[0]
+    assert proj.id == project_id
     assert proj.name == project_name
 
     files_map = {Path(file.path).relative_to(project_root).as_posix(): file for file in files}
@@ -126,7 +128,8 @@ def test_basic_import(reset: None) -> None:
     """
     project_name = "cool multifile project"
     project_root = Path(__file__).parent / "test_files" / "basic_import"
-    run_indexing(project_name, project_root)
+    project_id = create_project(project_name, project_root)
+    run_indexing(project_id)
 
     with get_session() as session:
         projs = session.query(Project).all()
@@ -145,6 +148,7 @@ def test_basic_import(reset: None) -> None:
 
     assert len(projs) == 1
     proj = projs[0]
+    assert proj.id == project_id
     assert proj.name == project_name
 
     files_map = {Path(file.path).relative_to(project_root).as_posix(): file for file in files}
@@ -213,7 +217,7 @@ def test_basic_import(reset: None) -> None:
         ("file1.Class3a", "module1.file3.Class3a"),
         ("file1.func4a", "module1.file3.func4a"),
         ("file1.func2b", "file2.func2b"),
-        ("module1.func3a", "module1.file3.func3a"),  # FIXME: currently maps to file3.func3a
+        ("module1.func3a", "module1.file3.func3a"),
         ("module1.file3.func4a", "module2.file4.func4a"),
     }
 
@@ -238,6 +242,7 @@ def test_basic_import(reset: None) -> None:
 # - incremental indexing (modified file)
 # - incremental indexing (deleted file)
 # - incremental indexing (moved file = deleted + new)
+# - incremental indexing (removed project root)
 
 # - file: skips skip pattern directories
 # - file: skips files that are too big

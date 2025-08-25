@@ -40,6 +40,7 @@ class Project(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String)
+    root_path: Mapped[str] = mapped_column(String)
     languages: Mapped[list[Language]] = mapped_column(ARRAY(String), default=[])
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
@@ -67,6 +68,8 @@ class Project(Base):
         single_parent=True,
         passive_deletes=True,
     )
+
+    __table_args__ = (UniqueConstraint("root_path", name="uq_projects_root_path"),)
 
 
 class File(Base):

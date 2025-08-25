@@ -30,23 +30,16 @@ _PARSER_CLASSES_BY_LANGUAGE = {
 }
 
 
-def run_indexing(
-    project_name: str,
-    project_root: Path,
-    directory_skip_pattern: str = DIRECTORY_SKIP_INDEXING_PATTERN,
-    max_filesize: int = MAX_INDEXING_FILE_SIZE,
-) -> None:
+def create_project(project_name: str, project_root: Path) -> int:
     """
-    Runs the complete indexing pipeline for a given project.
-    TODO: handle incremental indexing/reindexing after failure
+    Creates a `Project` along with its root `File` and adds it to the database. Returns the project
+    id.
     """
     assert project_root.is_dir()
     project_root = project_root.resolve()
-    skip_pattern = re.compile(directory_skip_pattern)
 
-    # 1. Create `Project` and root `File`
     with get_session() as session:
-        db_project = Project(name=project_name)
+        db_project = Project(name=project_name, root_path=project_root.as_posix())
         session.add(db_project)
         session.flush()
 
@@ -55,25 +48,44 @@ def run_indexing(
         db_project.root_file_id = root_file.id
         session.commit()
 
-    # 2. Create cg indexing wrapper
-    def _cg_indexing_wrapper(filepath: Path, language: Language, step: IndexingStep) -> None:
-        with get_session() as session:
-            parser_cls = _PARSER_CLASSES_BY_LANGUAGE[language]
-            parser = parser_cls(project_id, project_root, filepath, session)
+    return project_id
 
-            if step == IndexingStep.DEFINITIONS:
-                parser.extract_definitions()
-            elif step == IndexingStep.REFERENCES:
-                parser.extract_references()
-            session.commit()
 
-    # 3. Traverse from root to create `File`s and track languages + files to index
-    cg_tasks: list[tuple[Path, Language]] = []
-    vec_tasks: list[Path] = []
-    project_languages: set[Language] = set()
-
+def run_indexing(
+    project_id: int,
+    directory_skip_pattern: str = DIRECTORY_SKIP_INDEXING_PATTERN,
+    max_filesize: int = MAX_INDEXING_FILE_SIZE,
+) -> None:
+    """
+    Runs the complete indexing pipeline for a given project.
+    TODO: handle incremental indexing/reindexing after failure
+    """
     with get_session() as session:
+        # 1. Find project root
+        db_project = session.query(Project).filter(Project.id == project_id).one()
+        project_root = Path(db_project.root_path)
+        # TODO: if project root is deleted, delete the project
+
+        # 2. Create cg indexing wrapper
+        def _cg_indexing_wrapper(filepath: Path, language: Language, step: IndexingStep) -> None:
+            with get_session() as cg_session:
+                parser_cls = _PARSER_CLASSES_BY_LANGUAGE[language]
+                parser = parser_cls(project_id, project_root, filepath, cg_session)
+
+                if step == IndexingStep.DEFINITIONS:
+                    parser.extract_definitions()
+                elif step == IndexingStep.REFERENCES:
+                    parser.extract_references()
+                cg_session.commit()
+
+        # 3. Traverse from root to create `File`s and track languages + files to index
+        cg_tasks: list[tuple[Path, Language]] = []
+        vec_tasks: list[Path] = []
+        project_languages: set[Language] = set()
+
+        skip_pattern = re.compile(directory_skip_pattern)
         path_stack: list[Path] = [project_root]
+
         while path_stack:
             path = path_stack.pop()
 
@@ -103,7 +115,6 @@ def run_indexing(
             if path.suffix in VECTOR_INDEXED_FILETYPES:
                 vec_tasks.append(path)
 
-        db_project = session.query(Project).filter(Project.id == project_id).one()
         db_project.languages = list(project_languages)
         session.commit()
 
@@ -117,7 +128,6 @@ def run_indexing(
             executor.submit(_cg_indexing_wrapper, path, language, IndexingStep.DEFINITIONS)
             for path, language in cg_tasks
         ]
-        # vec_futs = [executor.submit(VECTOR_INDEX_FN, path) for path in vec_tasks]
 
         # wait for cg1 to finish, then queue cg2
         wait(cg1_futs)
@@ -125,7 +135,19 @@ def run_indexing(
             executor.submit(_cg_indexing_wrapper, path, language, IndexingStep.REFERENCES)
             for path, language in cg_tasks
         ]
+        # vec_futs = [executor.submit(VECTOR_INDEX_FN, path) for path in vec_tasks]
         wait(cg2_futs)  # + vec_futs
+
+
+def _find_file(filepath: Path, project_id: int, session: Session) -> File | None:
+    """
+    Finds a `File` object in the database.
+    """
+    return (
+        session.query(File)
+        .filter(File.project_id == project_id, File.path == filepath.as_posix())
+        .one_or_none()
+    )
 
 
 def _create_file(
@@ -138,12 +160,7 @@ def _create_file(
     created_at = datetime.fromtimestamp(file_stats.st_ctime)
     updated_at = datetime.fromtimestamp(file_stats.st_mtime)
 
-    parent_path = filepath.parent
-    parent = (
-        session.query(File)
-        .filter(File.path == parent_path.as_posix(), File.project_id == project_id)
-        .one_or_none()
-    )
+    parent = _find_file(filepath.parent, project_id, session)
     parent_id = parent.id if parent else None
 
     db_file = File(
