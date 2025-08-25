@@ -1,4 +1,8 @@
+from datetime import datetime, timedelta
 from enum import Enum
+from pathlib import Path
+
+from pydantic import BaseModel
 
 
 class NodeType(str, Enum):
@@ -27,3 +31,10 @@ class Language(str, Enum):
 class IndexingStep(str, Enum):
     DEFINITIONS = "definitions"
     REFERENCES = "references"
+
+
+class IndexingStatus(BaseModel):
+    start_time: datetime
+    duration: timedelta
+    codegraph_indexed_paths: list[Path]
+    vector_indexed_paths: list[Path]

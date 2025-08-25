@@ -15,7 +15,7 @@ from codegraph.configs.indexing import (
 from codegraph.db.engine import get_session
 from codegraph.db.models import File, Project
 from codegraph.graph.indexing.parsing.python_parser import PythonParser
-from codegraph.graph.models import IndexingStep, Language
+from codegraph.graph.models import IndexingStatus, IndexingStep, Language
 from codegraph.utils.logging import get_logger
 
 logger = get_logger()
@@ -54,8 +54,8 @@ def create_project(project_name: str, project_root: Path) -> int:
 def run_indexing(
     project_id: int,
     directory_skip_pattern: str = DIRECTORY_SKIP_INDEXING_PATTERN,
-    max_filesize: int = MAX_INDEXING_FILE_SIZE,
-) -> None:
+    max_filesize: float = MAX_INDEXING_FILE_SIZE,
+) -> IndexingStatus:
     """
     Runs the complete (re)indexing pipeline for a given project.
     """
@@ -73,7 +73,12 @@ def run_indexing(
         if not project_root.exists():
             session.delete(db_project)
             session.commit()
-            return
+            return IndexingStatus(
+                start_time=indexing_start_time,
+                duration=datetime.now() - indexing_start_time,
+                codegraph_indexed_paths=[],
+                vector_indexed_paths=[],
+            )
         root_file.last_indexed_at = datetime.now()
 
         # 3. Create cg indexing wrapper
@@ -99,9 +104,10 @@ def run_indexing(
             path, parent_file = stack.pop()
 
             # check for skip conditions
+            file_stats = path.stat()
             if (
                 (path.is_dir() and skip_pattern.match(path.name))
-                or (path.is_file() and path.stat().st_size > max_filesize * 1024 * 1024)
+                or (path.is_file() and file_stats.st_size > max_filesize * 1024 * 1024)
                 or (path.is_file() and path.suffix not in INDEXED_FILETYPES)
             ):
                 continue
@@ -114,14 +120,15 @@ def run_indexing(
             run_indexing = False
 
             # delete `File` if it's a file and has been modified since last indexed
+            updated_at = datetime.fromtimestamp(file_stats.st_mtime)
             if (
                 current_file is not None
                 and path.is_file()
-                and current_file.updated_at > current_file.last_indexed_at
+                and updated_at > current_file.last_indexed_at
             ):
                 session.delete(current_file)
+                session.flush()
                 current_file = None
-                run_indexing = True
 
             # create file if not previously indexed
             if current_file is None:
@@ -172,6 +179,13 @@ def run_indexing(
         ]
         # vec_futs = [executor.submit(VECTOR_INDEX_FN, path) for path in vec_tasks]
         wait(cg2_futs)  # + vec_futs
+
+    return IndexingStatus(
+        start_time=indexing_start_time,
+        duration=datetime.now() - indexing_start_time,
+        codegraph_indexed_paths=[path for path, _ in cg_tasks],
+        vector_indexed_paths=vec_tasks,
+    )
 
 
 def _find_file(filepath: Path, project_id: int, session: Session) -> File | None:
