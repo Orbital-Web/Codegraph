@@ -30,6 +30,16 @@ services:
     volumes:
       - index_volume:/data
 
+  cache:
+    image: redis:8.2.1-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_volume:/data
+
 volumes:
   db_volume:
   index_volume:
+  redis_volume:

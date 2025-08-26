@@ -4,7 +4,7 @@ CodeGraph is a CLI-based AI coding assistant that can index your workspace to an
 
 The codegraph currently only supports `Python`, although there are other tools that allow the agent to still find relevent information to answer questions. The supported languages for semantic lookup will depend on the embedding model being used. The default model, [codet5p-110m-embedding](https://huggingface.co/Salesforce/codet5p-110m-embedding) supports `Python`, `C`, `C++`, `Go`, `Java`, `JavaScript`, `PHP`, and `Ruby`.
 
-The project uses `LangGraph` for the agent, `Postgres` for the codegraph and other tables (+`Alembic` for versioning), and `Chroma` for the vectorstore.
+The project uses `LangGraph` for the agent, `Postgres` for the codegraph and other tables (+`Alembic` for versioning), `Chroma` for the vectorstore, `Redis` for the cache, and `Celery` for the background tasks.
 <!-- + LiteLLM for managing different models -->
 
 <!-- TODO: insert GIF/video here -->
@@ -16,7 +16,7 @@ The project uses `LangGraph` for the agent, `Postgres` for the codegraph and oth
 - TODO: 2
 
 ## Quick Setup
-1. Start by installing Python 3.13.3 and Docker (may work with Python 3.11/3.12, though not tested)
+1. Start by installing Python 3.13.3 and Docker (may work with earlier Python versions, though not tested)
 
 2. Navigate to `/deployment` and start up the required containers
 
@@ -24,7 +24,7 @@ The project uses `LangGraph` for the agent, `Postgres` for the codegraph and oth
    docker compose -f docker/docker-compose-dev.yml -p codegraph-stack up -d
    ```
 
-2. Navigate to `/backend`, create and activate the virtual environment, and download the requirements:
+3. Navigate to `/backend`, create and activate the virtual environment, and download the requirements:
 
    ```bash
    python -m venv .venv
@@ -33,18 +33,33 @@ The project uses `LangGraph` for the agent, `Postgres` for the codegraph and oth
    pip install -r requirements.txt
    ```
 
-<!-- TODO: add instructions on the .env file and required environmental variables -->
-3. If you are using VSCode and want to run a debug instance, go to `Run` and launch `CodeGraph CLI`.
+   *Note that because this project uses Celery, it may not work for Windows devices. Windows users are recommended to run this project in [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)*
 
-   Otherwise, make sure you are in `/backend` and run
+4. Still in `/backend`, you will need to run the DB migrations for postgres when running CodeGraph for the first time or if the DB models change, by running:
 
    ```bash
+   alembic upgrade head
+   ```
+
+<!-- TODO: add instructions on the .env file and required environmental variables -->
+5. If you are using VSCode and want to run a debug instance, go to `Run` and launch `CodeGraph (all)`.
+
+   Otherwise, make sure you are in `/backend` and run each of these commands in a separate terminal:
+
+   <!-- TODO: create a script to start all celery workers -->
+   ```bash
+   # start celery workers
+   python -m dotenv -f ../.vscode/.env run celery -A codegraph.celery.workers.primary worker --pool=threads --concurrency=4 --prefetch-multiplier=1 --loglevel=INFO -Q celery
+   python -m dotenv -f ../.vscode/.env run celery -A codegraph.celery.workers.indexing worker --pool=threads --concurrency=4 --prefetch-multiplier=1 --loglevel=INFO -Q indexing
+   python -m dotenv -f ../.vscode/.env run celery -A codegraph.celery.workers.beat beat --loglevel=INFO
+
+   # start codegraph cli
    python -m dotenv -f ../.vscode/.env run python main.py
    ```
 
-4. Follow the instructions in the CLI to create a new project, index it, and chat with the AI agent
+6. Follow the instructions in the CLI to create a new project, index it, and chat with the AI agent
 
-5. (Optional) If you plan on contributing to the codebase, you should run
+7. (Optional) If you plan on contributing to the codebase, you should run
 
    ```
    pip install pre-commit

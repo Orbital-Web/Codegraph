@@ -1,8 +1,10 @@
 import re
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
+from time import monotonic
 
+from redis.lock import Lock
 from sqlalchemy.orm import Session
 
 from codegraph.configs.indexing import (
@@ -16,6 +18,7 @@ from codegraph.db.engine import get_session
 from codegraph.db.models import File, Project
 from codegraph.graph.indexing.parsing.python_parser import PythonParser
 from codegraph.graph.models import IndexingStatus, IndexingStep, Language
+from codegraph.redis.lock_utils import extend_lock
 from codegraph.utils.logging import get_logger
 
 logger = get_logger()
@@ -53,13 +56,17 @@ def create_project(project_name: str, project_root: Path) -> int:
 
 def run_indexing(
     project_id: int,
+    lock: Lock | None = None,
     directory_skip_pattern: str = DIRECTORY_SKIP_INDEXING_PATTERN,
     max_filesize: float = MAX_INDEXING_FILE_SIZE,
 ) -> IndexingStatus:
     """
-    Runs the complete (re)indexing pipeline for a given project.
+    Runs the complete (re)indexing pipeline for a given project. Indexing for the same project
+    should not overlap. If a lock is provided, it will ensure it does not expire while indexing.
+    TODO: make indexing crash safe
     """
     indexing_start_time = datetime.now()
+    last_locked_at = monotonic()
 
     with get_session() as session:
         # 1. Find project root
@@ -102,6 +109,9 @@ def run_indexing(
         stack: list[tuple[Path, File]] = [(path, root_file) for path in project_root.iterdir()]
         while stack:
             path, parent_file = stack.pop()
+
+            if lock:
+                last_locked_at = extend_lock(lock, last_locked_at)
 
             # check for skip conditions
             file_stats = path.stat()
@@ -163,22 +173,29 @@ def run_indexing(
     # 5. Run indexing tasks
     logger.info(
         f"Starting codegraph indexing of {len(cg_tasks)} files and "
-        f"vector indexing of {len(vec_tasks)} files."
+        f"vector indexing of {len(vec_tasks)} files for project {project_id}."
     )
     with ThreadPoolExecutor(max_workers=MAX_INDEXING_WORKERS) as executor:
+        # 5.1. Run codegraph definition extraction
         cg1_futs = [
             executor.submit(_cg_indexing_wrapper, path, language, IndexingStep.DEFINITIONS)
             for path, language in cg_tasks
         ]
+        for fut in as_completed(cg1_futs):
+            fut.result()  # re-raise any exceptions immediately
+            if lock:
+                last_locked_at = extend_lock(lock, last_locked_at)
 
-        # wait for cg1 to finish, then queue cg2
-        wait(cg1_futs)
+        # 5.2. Run codegraph reference extraction and vector indexing
         cg2_futs = [
             executor.submit(_cg_indexing_wrapper, path, language, IndexingStep.REFERENCES)
             for path, language in cg_tasks
         ]
         # vec_futs = [executor.submit(VECTOR_INDEX_FN, path) for path in vec_tasks]
-        wait(cg2_futs)  # + vec_futs
+        for fut in as_completed(cg2_futs):  # + vec_futs
+            fut.result()  # re-raise any exceptions immediately
+            if lock:
+                last_locked_at = extend_lock(lock, last_locked_at)
 
     return IndexingStatus(
         start_time=indexing_start_time,

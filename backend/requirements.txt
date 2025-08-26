@@ -1,6 +1,8 @@
 alembic==1.16.4
 autoflake==2.3.1
 black==25.1.0
+celery==5.5.3
+celery-types==0.23.0
 colorama==0.4.6
 isort==6.0.1
 mypy==1.17.1
@@ -8,5 +10,6 @@ psycopg2-binary==2.9.10
 pydantic==2.11.7
 pytest==8.4.1
 python-dotenv==1.1.1
+redis==6.4.0
 SQLAlchemy[mypy]==2.0.43
 types-colorama==0.4.15.20250801

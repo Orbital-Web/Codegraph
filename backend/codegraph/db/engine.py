@@ -1,11 +1,12 @@
 from contextlib import contextmanager
+from time import monotonic, sleep
 from typing import Any, Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from codegraph.configs.constants import (
+from codegraph.configs.app_configs import (
     POSTGRES_DB,
     POSTGRES_HOST,
     POSTGRES_PASSWORD,
@@ -13,7 +14,12 @@ from codegraph.configs.constants import (
     POSTGRES_READONLY_PASSWORD,
     POSTGRES_READONLY_USER,
     POSTGRES_USER,
+    READINESS_INTERVAL,
+    READINESS_TIMEOUT,
 )
+from codegraph.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _build_connection_endpoint(
@@ -77,3 +83,37 @@ def get_session(readonly: bool = False) -> Generator[Session, None, None]:
     engine = SqlEngine.get_readonly_engine() if readonly else SqlEngine.get_engine()
     with Session(bind=engine, expire_on_commit=False) as session:
         yield session
+
+
+def wait_for_db() -> bool:
+    logger.info("Database: readiness probe starting")
+
+    start_time = monotonic()
+    ready = False
+
+    while True:
+        try:
+            with get_session() as session:
+                result = session.execute(text("SELECT 1")).scalar()
+                if result:
+                    ready = True
+                    break
+        except Exception:
+            pass
+
+        elapsed = monotonic() - start_time
+        if elapsed > READINESS_TIMEOUT:
+            break
+
+        logger.warning(
+            f"Database: readiness probe ongoing, elapsed: {elapsed:.1f}s "
+            f"timeout={READINESS_TIMEOUT:.1f}s)"
+        )
+        sleep(READINESS_INTERVAL)
+
+    if not ready:
+        logger.error(f"Database: readiness probe did not succeed in {READINESS_TIMEOUT}")
+        return False
+
+    logger.info(f"Database: readiness probe succeeded")
+    return True

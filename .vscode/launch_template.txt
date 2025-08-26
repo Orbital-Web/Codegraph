@@ -1,5 +1,30 @@
 {
     "version": "0.1.0",
+    "compounds": [
+        {
+            "name": "CodeGraph (all)",
+            "configurations": [
+                "CodeGraph CLI",
+                "Celery Primary",
+                "Celery Indexing",
+                "Celery Beat",
+            ],
+            "presentation": {
+                "group": "1",
+            },
+        },
+        {
+            "name": "Celery (all)",
+            "configurations": [
+                "Celery Primary",
+                "Celery Indexing",
+                "Celery Beat",
+            ],
+            "presentation": {
+                "group": "1",
+            },
+        }
+    ],
     "configurations": [
         // run
         {
@@ -16,7 +41,88 @@
                 "PYTHONPATH": "."
             },
             "presentation": {
-                "group": "1",
+                "group": "2",
+            },
+        },
+        // celery workers
+        {
+            "name": "Celery Primary",
+            "consoleName": "Celery Primary",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "celery",
+            "cwd": "${workspaceFolder}/backend",
+            "envFile": "${workspaceFolder}/.vscode/.env",
+            "env": {
+                "LOG_LEVEL": "INFO",
+                "PYTHONUNBUFFERED": "1",
+                "PYTHONPATH": "."
+            },
+            "args": [
+                "-A",
+                "codegraph.celery.workers.primary",
+                "worker",
+                "--pool=threads",
+                "--concurrency=4",
+                "--prefetch-multiplier=1",
+                "--loglevel=INFO",
+                "-Q",
+                "celery"
+            ],
+            "presentation": {
+                "group": "2",
+            },
+        },
+        {
+            "name": "Celery Indexing",
+            "consoleName": "Celery Indexing",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "celery",
+            "cwd": "${workspaceFolder}/backend",
+            "envFile": "${workspaceFolder}/.vscode/.env",
+            "env": {
+                "LOG_LEVEL": "INFO",
+                "PYTHONUNBUFFERED": "1",
+                "PYTHONPATH": "."
+            },
+            "args": [
+                "-A",
+                "codegraph.celery.workers.indexing",
+                "worker",
+                "--pool=threads",
+                "--concurrency=4",
+                "--prefetch-multiplier=1",
+                "--loglevel=INFO",
+                "-Q",
+                "indexing"
+            ],
+            "presentation": {
+                "group": "2",
+            },
+        },
+        // celery beat
+        {
+            "name": "Celery Beat",
+            "consoleName": "Celery Beat",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "celery",
+            "cwd": "${workspaceFolder}/backend",
+            "envFile": "${workspaceFolder}/.vscode/.env",
+            "env": {
+                "LOG_LEVEL": "INFO",
+                "PYTHONUNBUFFERED": "1",
+                "PYTHONPATH": "."
+            },
+            "args": [
+                "-A",
+                "codegraph.celery.workers.beat",
+                "beat",
+                "--loglevel=INFO"
+            ],
+            "presentation": {
+                "group": "2",
             },
         },
         // test
@@ -29,17 +135,16 @@
             "cwd": "${workspaceFolder}/backend",
             "envFile": "${workspaceFolder}/.vscode/.env",
             "env": {
-              "LOG_LEVEL": "DEBUG",
-              "PYTHONUNBUFFERED": "1",
-              "PYTHONPATH": "."
+                "LOG_LEVEL": "DEBUG",
+                "PYTHONUNBUFFERED": "1",
+                "PYTHONPATH": "."
             },
             "args": [
-              "-v"
-              // Specify a specific module/test to run or provide nothing to run all tests
-              //"tests/unit/cli/test_streaming.py"
+                "-vv"
+                // Specify a specific module/test to run or provide nothing to run all tests
             ],
             "presentation": {
-              "group": "2"
+                "group": "3"
             },
         },
     ],

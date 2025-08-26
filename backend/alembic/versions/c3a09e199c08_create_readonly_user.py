@@ -11,7 +11,7 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 
 from alembic import op
-from codegraph.configs.constants import (
+from codegraph.configs.app_configs import (
     POSTGRES_DB,
     POSTGRES_READONLY_PASSWORD,
     POSTGRES_READONLY_USER,
