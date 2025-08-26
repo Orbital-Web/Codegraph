@@ -1,4 +1,5 @@
-from celery import Task, shared_task
+from celery import shared_task
+from celery.app.task import Task
 from redis.lock import Lock
 from sqlalchemy import select
 
@@ -23,7 +24,7 @@ def _get_indexing_lock_name(project_id: int) -> str:
 
 
 @shared_task(name=CeleryTask.QUEUE_INDEXING, bind=True)
-def queue_indexing(self: Task) -> None:
+def queue_indexing(self: Task) -> None:  # type: ignore[type-arg]
     """Enqueue indexing tasks for all projects."""
     with get_session() as session:
         project_ids = session.execute(select(Project.id)).scalars().all()
