@@ -1,8 +1,10 @@
 import re
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from time import monotonic
+from typing import Generator
 
 from redis.lock import Lock
 from sqlalchemy.orm import Session
@@ -16,8 +18,15 @@ from codegraph.configs.indexing import (
 )
 from codegraph.db.engine import get_session
 from codegraph.db.models import File, Project
+from codegraph.graph.indexing.parsing.base_parser import BaseParser
 from codegraph.graph.indexing.parsing.python_parser import PythonParser
-from codegraph.graph.models import IndexingStatus, IndexingStep, Language
+from codegraph.graph.models import (
+    INDEXING_STEP_ORDER,
+    NEXT_INDEXING_STEPS,
+    IndexingStatus,
+    IndexingStep,
+    Language,
+)
 from codegraph.redis.lock_utils import extend_lock
 from codegraph.utils.logging import get_logger
 
@@ -26,10 +35,8 @@ logger = get_logger()
 # NOTE: make sure to update `PARSER_CLASSES` when creating a new parser
 PARSER_CLASSES = [PythonParser]
 
-_PARSER_CLASSES_BY_LANGUAGE = {
-    parser_cls._LANGUAGE: parser_cls
-    for parser_cls in PARSER_CLASSES
-    if parser_cls._LANGUAGE is not None
+_PARSER_CLASSES_BY_LANGUAGE: dict[Language | None, type[BaseParser]] = {
+    parser_cls._LANGUAGE: parser_cls for parser_cls in PARSER_CLASSES
 }
 
 
@@ -47,7 +54,9 @@ def create_project(project_name: str, project_root: Path) -> int:
         session.flush()
 
         project_id = db_project.id
-        root_file = _create_file(project_root, project_id, None, None, session)
+        root_file = _create_file(
+            project_root, project_id, None, None, IndexingStep.COMPLETE, session
+        )  # root so no parent, dir so no language and no indexing step
         db_project.root_file_id = root_file.id
         session.commit()
 
@@ -63,7 +72,7 @@ def run_indexing(
     """
     Runs the complete (re)indexing pipeline for a given project. Indexing for the same project
     should not overlap. If a lock is provided, it will ensure it does not expire while indexing.
-    TODO: make indexing crash safe
+    The indexing will pick up where it left off in case of a crash.
     """
     indexing_start_time = datetime.now()
     last_locked_at = monotonic()
@@ -74,7 +83,7 @@ def run_indexing(
         project_root = Path(db_project.root_path)
         root_file = db_project.root_file
         assert root_file is not None
-        assert root_file.path == project_root.as_posix()
+        assert root_file.path == db_project.root_path
 
         # 2. Delete project if root no longer exists, otherwise update last indexed time
         if not project_root.exists():
@@ -88,21 +97,34 @@ def run_indexing(
             )
         root_file.last_indexed_at = datetime.now()
 
-        # 3. Create cg indexing wrapper
-        def _cg_indexing_wrapper(filepath: Path, language: Language, step: IndexingStep) -> None:
-            with get_session() as cg_session:
-                parser_cls = _PARSER_CLASSES_BY_LANGUAGE[language]
-                parser = parser_cls(project_id, project_root, filepath, cg_session)
+        # 3. Create indexing wrapper
+        def _indexing_wrapper(_file_id: uuid.UUID) -> None:
+            with get_session() as _session:
+                _file = _session.query(File).filter(File.id == _file_id).one()
+                assert _file.indexing_step != IndexingStep.COMPLETE
 
-                if step == IndexingStep.DEFINITIONS:
-                    parser.extract_definitions()
-                elif step == IndexingStep.REFERENCES:
-                    parser.extract_references()
-                cg_session.commit()
+                _step = _file.indexing_step
+                _filepath = Path(_file.path)
 
-        # 4. Traverse from root to find new/modified `File`s and track indexing tasks + languages
-        cg_tasks: list[tuple[Path, Language]] = []
-        vec_tasks: list[Path] = []
+                _parser_cls = _PARSER_CLASSES_BY_LANGUAGE[_file.language]
+                _parser = _parser_cls(project_id, project_root, _filepath, _session)
+
+                # codegraph indexing
+                if _step == IndexingStep.DEFINITIONS:
+                    _parser.extract_definitions()
+                elif _step == IndexingStep.REFERENCES:
+                    _parser.extract_references()
+
+                # vector indexing
+                elif _step == IndexingStep.VECTOR:
+                    # TODO: maybe call parser to chunk the file then index?
+                    pass
+
+                # update step
+                _file.indexing_step = NEXT_INDEXING_STEPS[_step]
+                _session.commit()
+
+        # 4. Index `File`s, set appropriate indexing step, and track languages
         project_languages: set[Language] = set()
 
         skip_pattern = re.compile(directory_skip_pattern)
@@ -127,7 +149,6 @@ def run_indexing(
                 project_languages.add(language)
 
             current_file = _find_file(path, project_id, session)
-            run_indexing = False
 
             # delete `File` if it's a file and has been modified since last indexed
             updated_at = datetime.fromtimestamp(file_stats.st_mtime)
@@ -140,25 +161,31 @@ def run_indexing(
                 session.flush()
                 current_file = None
 
-            # create file if not previously indexed
+            # create file if not previously indexed, otherwise update last indexed time
             if current_file is None:
                 if path.is_dir():
-                    current_file = _create_file(path, project_id, parent_file, None, session)
-                    stack.extend((path, current_file) for path in path.iterdir())
-                    continue
+                    current_file = _create_file(
+                        path, project_id, parent_file, None, IndexingStep.COMPLETE, session
+                    )  # dir so no language and no indexing step
+                else:
+                    current_file = _create_file(
+                        path,
+                        project_id,
+                        parent_file,
+                        language,
+                        (
+                            IndexingStep.DEFINITIONS
+                            if language in _PARSER_CLASSES_BY_LANGUAGE
+                            else IndexingStep.VECTOR
+                        ),  # do codegraph indexing if language is supported, otherwise vector only
+                        session,
+                    )
+            else:
+                current_file.last_indexed_at = datetime.now()
 
-                current_file = _create_file(path, project_id, parent_file, language, session)
-                run_indexing = True
-
-            # update `File` last indexed time
-            current_file.last_indexed_at = datetime.now()
-
-            # add codegraph and vector indexing tasks
-            if not run_indexing:
-                continue
-            if language in _PARSER_CLASSES_BY_LANGUAGE:
-                cg_tasks.append((path, language))
-            vec_tasks.append(path)
+            # add subdirectories to stack and continue
+            if path.is_dir():
+                stack.extend((path, current_file) for path in path.iterdir())
 
         # delete files that haven't been touched
         session.query(File).filter(
@@ -171,37 +198,31 @@ def run_indexing(
         session.commit()
 
     # 5. Run indexing tasks
-    logger.info(
-        f"Starting codegraph indexing of {len(cg_tasks)} files and "
-        f"vector indexing of {len(vec_tasks)} files for project {project_id}."
-    )
-    with ThreadPoolExecutor(max_workers=MAX_INDEXING_WORKERS) as executor:
-        # 5.1. Run codegraph definition extraction
-        cg1_futs = [
-            executor.submit(_cg_indexing_wrapper, path, language, IndexingStep.DEFINITIONS)
-            for path, language in cg_tasks
-        ]
-        for fut in as_completed(cg1_futs):
-            fut.result()  # re-raise any exceptions immediately
-            if lock:
-                last_locked_at = extend_lock(lock, last_locked_at)
+    logger.info(f"Starting codegraph indexing for project {project_id}.")
+    cg_paths: list[Path] = []
+    vec_paths: list[Path] = []
 
-        # 5.2. Run codegraph reference extraction and vector indexing
-        cg2_futs = [
-            executor.submit(_cg_indexing_wrapper, path, language, IndexingStep.REFERENCES)
-            for path, language in cg_tasks
-        ]
-        # vec_futs = [executor.submit(VECTOR_INDEX_FN, path) for path in vec_tasks]
-        for fut in as_completed(cg2_futs):  # + vec_futs
-            fut.result()  # re-raise any exceptions immediately
-            if lock:
-                last_locked_at = extend_lock(lock, last_locked_at)
+    with ThreadPoolExecutor(max_workers=MAX_INDEXING_WORKERS) as executor:
+        for step in INDEXING_STEP_ORDER:
+            for files in _get_batch_files_at_step(project_id, step):
+                # batch index
+                futs = [executor.submit(_indexing_wrapper, file.id) for file in files]
+                for fut in as_completed(futs):
+                    fut.result()
+
+                # extend locks and track indexed paths
+                if lock:
+                    last_locked_at = extend_lock(lock, last_locked_at)
+                if step == IndexingStep.REFERENCES:
+                    cg_paths.extend(Path(file.path) for file in files)
+                elif step == IndexingStep.VECTOR:
+                    vec_paths.extend(Path(file.path) for file in files)
 
     return IndexingStatus(
         start_time=indexing_start_time,
         duration=datetime.now() - indexing_start_time,
-        codegraph_indexed_paths=[path for path, _ in cg_tasks],
-        vector_indexed_paths=vec_tasks,
+        codegraph_indexed_paths=cg_paths,
+        vector_indexed_paths=vec_paths,
     )
 
 
@@ -221,6 +242,7 @@ def _create_file(
     project_id: int,
     parent: File | None,
     language: Language | None,
+    indexing_step: IndexingStep,
     session: Session,
 ) -> File:
     """
@@ -234,6 +256,7 @@ def _create_file(
         name=filepath.name,
         path=filepath.as_posix(),
         language=language,
+        indexing_step=indexing_step,
         created_at=created_at,
         updated_at=updated_at,
         parent_id=parent.id if parent is not None else None,
@@ -243,3 +266,26 @@ def _create_file(
 
     session.flush()
     return db_file
+
+
+def _get_batch_files_at_step(
+    project_id: int,
+    indexing_step: IndexingStep,
+    batch_size: int = MAX_INDEXING_WORKERS,  # can be more, tune so lock doesn't expire
+) -> Generator[list[File], None, None]:
+    """
+    Generator that yields `File`s to index at a given `indexing_step`.
+    """
+    assert indexing_step != IndexingStep.COMPLETE
+
+    while True:
+        with get_session() as session:
+            files = (
+                session.query(File)
+                .filter(File.project_id == project_id, File.indexing_step == indexing_step)
+                .limit(batch_size)
+                .all()
+            )
+        if not files:
+            break
+        yield files

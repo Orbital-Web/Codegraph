@@ -31,6 +31,16 @@ class Language(str, Enum):
 class IndexingStep(str, Enum):
     DEFINITIONS = "definitions"
     REFERENCES = "references"
+    VECTOR = "vector"
+    COMPLETE = "complete"
+
+
+INDEXING_STEP_ORDER = (IndexingStep.DEFINITIONS, IndexingStep.REFERENCES, IndexingStep.VECTOR)
+NEXT_INDEXING_STEPS = {
+    IndexingStep.DEFINITIONS: IndexingStep.REFERENCES,
+    IndexingStep.REFERENCES: IndexingStep.VECTOR,
+    IndexingStep.VECTOR: IndexingStep.COMPLETE,
+}
 
 
 class IndexingStatus(BaseModel):

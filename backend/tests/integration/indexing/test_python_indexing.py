@@ -484,3 +484,7 @@ def test_should_ignore_massive_files(reset: None, tmp_path: Path) -> None:
         (sn.global_qualifier, tn.global_qualifier, ref.line_number): ref for (ref, sn, tn) in refs
     }
     assert refs_map.keys() == {("file1", "file1.func1", 1)}
+
+
+# TODO: add directories to incremental indexing test
+# TODO: crash consistency tests

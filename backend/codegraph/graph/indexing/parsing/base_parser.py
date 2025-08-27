@@ -17,7 +17,8 @@ class BaseParser(ABC):
     def __init__(self, project_id: int, project_root: Path, filepath: Path, session: Session):
         """
         Initializes the parser. `filepath` is absolute. `session` is unique to this parser. Either
-        `extract_definitions` or `extract_references` will run exactly once per parser.
+        `extract_definitions` or `extract_references` will run exactly once per parser. The given
+        `session` should not be committed.
         """
         assert filepath.is_file()
 
