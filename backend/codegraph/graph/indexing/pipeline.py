@@ -10,6 +10,7 @@ from redis.lock import Lock
 from sqlalchemy.orm import Session
 
 from codegraph.configs.indexing import (
+    DEFAULT_INDEXING_BATCH_SIZE,
     DIRECTORY_SKIP_INDEXING_PATTERN,
     FILETYPE_LANGUAGES,
     INDEXED_FILETYPES,
@@ -68,6 +69,7 @@ def run_indexing(
     lock: Lock | None = None,
     directory_skip_pattern: str = DIRECTORY_SKIP_INDEXING_PATTERN,
     max_filesize: float = MAX_INDEXING_FILE_SIZE,
+    batch_size: int = DEFAULT_INDEXING_BATCH_SIZE,
 ) -> IndexingStatus:
     """
     Runs the complete (re)indexing pipeline for a given project. Indexing for the same project
@@ -106,6 +108,7 @@ def run_indexing(
                 _step = _file.indexing_step
                 _filepath = Path(_file.path)
 
+                # TODO: create generic parser for None language (e.g., txt files) to avoid keyerror
                 _parser_cls = _PARSER_CLASSES_BY_LANGUAGE[_file.language]
                 _parser = _parser_cls(project_id, project_root, _filepath, _session)
 
@@ -204,7 +207,7 @@ def run_indexing(
 
     with ThreadPoolExecutor(max_workers=MAX_INDEXING_WORKERS) as executor:
         for step in INDEXING_STEP_ORDER:
-            for files in _get_batch_files_at_step(project_id, step):
+            for files in _get_batch_files_at_step(project_id, step, batch_size=batch_size):
                 # batch index
                 futs = [executor.submit(_indexing_wrapper, file.id) for file in files]
                 for fut in as_completed(futs):

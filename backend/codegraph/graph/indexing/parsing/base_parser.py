@@ -83,6 +83,7 @@ class BaseParser(ABC):
             local_qualifier=local_qualifier,
             global_qualifier=global_qualifier,
             project_id=self._project_id,
+            file_id=self._file.id,
         )
         self._session.add(db_alias)
         self._session.flush()

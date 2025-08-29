@@ -1,0 +1,3 @@
+# modified
+def bar():
+    pass

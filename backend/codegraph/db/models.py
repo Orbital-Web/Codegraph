@@ -105,6 +105,12 @@ class File(Base):
         single_parent=True,
         passive_deletes=True,
     )
+    aliases: Mapped[list["Alias"]] = relationship(
+        back_populates="file",
+        cascade="all, delete-orphan",
+        single_parent=True,
+        passive_deletes=True,
+    )
 
     __table_args__ = (
         Index("ix_files_parent", "parent_id"),
@@ -146,9 +152,15 @@ class Alias(Base):
 
     local_qualifier: Mapped[str] = mapped_column(String)  # unique within project
     global_qualifier: Mapped[str] = mapped_column(String)  # many local to one global allowed
+
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    file_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"))
 
     # relationships
     project: Mapped["Project"] = relationship(back_populates="aliases")
+    file: Mapped["File"] = relationship(back_populates="aliases")
 
-    __table_args__ = (PrimaryKeyConstraint("local_qualifier", "project_id"),)
+    __table_args__ = (
+        PrimaryKeyConstraint("local_qualifier", "project_id"),
+        Index("ix_alias_file", "file_id"),
+    )

@@ -1,12 +1,18 @@
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 
+import pytest
 from sqlalchemy.orm import aliased
 
 from codegraph.db.engine import get_session
 from codegraph.db.models import Alias, File, Node, Node__Reference, Project
 from codegraph.graph.indexing.pipeline import create_project, run_indexing
 from codegraph.graph.models import Language, NodeType
+
+
+class DeliberateError(Exception):
+    """Deliberate error for testing purposes."""
 
 
 def test_basic(reset: None) -> None:
@@ -287,9 +293,13 @@ def test_deleting_root_should_delete_project(reset: None, tmp_path: Path) -> Non
 
 def test_basic_incremental_indexing(reset: None, tmp_path: Path) -> None:
     """
-    - file/node/alias/refs: should be left intact if not modified
-    - file/node/alias/refs: should be deleted if deleted
-    - file/node/alias/refs: should be deleted and recreated if modified
+    - should leave file/node/alias/refs intact if file is not modified (__init__.py too)
+    - should create file/node/alias/refs if file is new (__init__.py too)
+    - should delete and recreate file/node/alias/refs if file is modified (__init__.py too)
+    - should delete file/node/alias/refs if file is deleted (__init__.py too)
+    - should leave file intact if directory is not modified
+    - should create file if directory is new
+    - should delete file/node/alias/refs for both directory and child if directory is deleted
     """
     project_name = "updated project"
     project_root = tmp_path / "project_root"
@@ -321,15 +331,30 @@ def test_basic_incremental_indexing(reset: None, tmp_path: Path) -> None:
     assert proj.name == project_name
 
     files_map = {Path(file.path).relative_to(project_root).as_posix(): file for file in files}
-    assert files_map.keys() == {".", "file1.py", "file2.py", "file3.py"}
-    dir1 = files_map["."]
-    file1 = files_map["file1.py"]
-    file2 = files_map["file2.py"]
-    file3 = files_map["file3.py"]
-    assert dir1.name == "project_root"
-    assert file1.name == "file1.py"
-    assert file2.name == "file2.py"
-    assert file3.name == "file3.py"
+    assert files_map.keys() == {
+        ".",
+        "file1.py",
+        "file2.py",
+        "file3.py",
+        "dir1",
+        "dir1/__init__.py",
+        "dir1/file5.py",
+        "dir1/file6.py",
+        "dir2",
+        "dir2/__init__.py",
+        "dir2/file8.py",
+    }
+    assert files_map["."].name == "project_root"
+    assert files_map["file1.py"].name == "file1.py"
+    assert files_map["file2.py"].name == "file2.py"
+    assert files_map["file3.py"].name == "file3.py"
+    assert files_map["dir1"].name == "dir1"
+    assert files_map["dir1/__init__.py"].name == "__init__.py"
+    assert files_map["dir1/file5.py"].name == "file5.py"
+    assert files_map["dir1/file6.py"].name == "file6.py"
+    assert files_map["dir2"].name == "dir2"
+    assert files_map["dir2/__init__.py"].name == "__init__.py"
+    assert files_map["dir2/file8.py"].name == "file8.py"
 
     nodes_map = {node.global_qualifier: node for node in nodes}
     assert nodes_map.keys() == {
@@ -340,10 +365,26 @@ def test_basic_incremental_indexing(reset: None, tmp_path: Path) -> None:
         "file2.func2a",
         "file3",
         "file3.func3a",
+        "dir1",
+        "dir1.foo",
+        "dir1.file5",
+        "dir1.file5.func5a",
+        "dir1.file6",
+        "dir1.file6.func6a",
+        "dir2",
+        "dir2.file8",
     }
     for node_name, node in nodes_map.items():
         assert node.project_id == proj.id
-        assert node.file_id == files_map[node_name.split(".")[0] + ".py"].id
+        if "file" not in node_name:
+            assert node.file_id == files_map[node_name[:4] + "/__init__.py"].id
+        else:
+            assert (
+                node.file_id
+                == files_map[
+                    "/".join(part for part in node_name.split(".") if "func" not in part) + ".py"
+                ].id
+            )
 
     aliases_map = {(alias.local_qualifier, alias.global_qualifier): alias for alias in aliases}
     assert aliases_map.keys() == set()
@@ -356,22 +397,43 @@ def test_basic_incremental_indexing(reset: None, tmp_path: Path) -> None:
         ("file1", "file1.func1b", 6),
         ("file2", "file2.func2a", 2),
         ("file3", "file3.func3a", 2),
+        ("dir1", "dir1.foo", 2),
+        ("dir1.file5", "dir1.file5.func5a", 2),
+        ("dir1.file6", "dir1.file6.func6a", 2),
     }
 
-    # modify project and re-index
+    # modify project and re-index (copyfile will set updated_at to now, unlike copytree)
     shutil.copyfile(incremental_root / "new" / "file1.py", project_root / "file1.py")
     shutil.copyfile(incremental_root / "new" / "file4.py", project_root / "file4.py")
+    shutil.copyfile(
+        incremental_root / "new" / "dir1" / "__init__.py", project_root / "dir1" / "__init__.py"
+    )
+    shutil.copyfile(
+        incremental_root / "new" / "dir1" / "file5.py", project_root / "dir1" / "file5.py"
+    )
+    shutil.copyfile(
+        incremental_root / "new" / "dir1" / "file7.py", project_root / "dir1" / "file7.py"
+    )
+    shutil.rmtree(project_root / "dir2")
     (project_root / "file3.py").unlink()
+    (project_root / "dir1" / "file6.py").unlink()
+    (project_root / "dir3").mkdir()
     status = run_indexing(project_id)
 
     # make sure re-indexing only ran for the modified/new files
     assert set(status.codegraph_indexed_paths) == {
         project_root / "file1.py",
         project_root / "file4.py",
+        project_root / "dir1" / "__init__.py",
+        project_root / "dir1" / "file5.py",
+        project_root / "dir1" / "file7.py",
     }
     assert set(status.vector_indexed_paths) == {
         project_root / "file1.py",
         project_root / "file4.py",
+        project_root / "dir1" / "__init__.py",
+        project_root / "dir1" / "file5.py",
+        project_root / "dir1" / "file7.py",
     }
 
     with get_session() as session:
@@ -395,15 +457,26 @@ def test_basic_incremental_indexing(reset: None, tmp_path: Path) -> None:
     assert proj.name == project_name
 
     files_map = {Path(file.path).relative_to(project_root).as_posix(): file for file in files}
-    assert files_map.keys() == {".", "file1.py", "file2.py", "file4.py"}
-    dir1 = files_map["."]
-    file1 = files_map["file1.py"]
-    file2 = files_map["file2.py"]
-    file4 = files_map["file4.py"]
-    assert dir1.name == "project_root"
-    assert file1.name == "file1.py"
-    assert file2.name == "file2.py"
-    assert file4.name == "file4.py"
+    assert files_map.keys() == {
+        ".",
+        "file1.py",
+        "file2.py",
+        "file4.py",
+        "dir1",
+        "dir1/__init__.py",
+        "dir1/file5.py",
+        "dir1/file7.py",
+        "dir3",
+    }
+    assert files_map["."].name == "project_root"
+    assert files_map["file1.py"].name == "file1.py"
+    assert files_map["file2.py"].name == "file2.py"
+    assert files_map["file4.py"].name == "file4.py"
+    assert files_map["dir1"].name == "dir1"
+    assert files_map["dir1/__init__.py"].name == "__init__.py"
+    assert files_map["dir1/file5.py"].name == "file5.py"
+    assert files_map["dir1/file7.py"].name == "file7.py"
+    assert files_map["dir3"].name == "dir3"
 
     nodes_map = {node.global_qualifier: node for node in nodes}
     assert nodes_map.keys() == {
@@ -414,10 +487,22 @@ def test_basic_incremental_indexing(reset: None, tmp_path: Path) -> None:
         "file2.func2a",
         "file4",
         "file4.func4a",
+        "dir1",
+        "dir1.bar",
+        "dir1.file7",
+        "dir1.file7.func7a",
     }
     for node_name, node in nodes_map.items():
         assert node.project_id == proj.id
-        assert node.file_id == files_map[node_name.split(".")[0] + ".py"].id
+        if "file" not in node_name:
+            assert node.file_id == files_map[node_name[:4] + "/__init__.py"].id
+        else:
+            assert (
+                node.file_id
+                == files_map[
+                    "/".join(part for part in node_name.split(".") if "func" not in part) + ".py"
+                ].id
+            )
 
     aliases_map = {(alias.local_qualifier, alias.global_qualifier): alias for alias in aliases}
     assert aliases_map.keys() == set()
@@ -430,6 +515,8 @@ def test_basic_incremental_indexing(reset: None, tmp_path: Path) -> None:
         ("file1", "file1.func1c", 6),
         ("file2", "file2.func2a", 2),
         ("file4", "file4.func4a", 2),
+        ("dir1", "dir1.bar", 2),
+        ("dir1.file7", "dir1.file7.func7a", 2),
     }
 
 
@@ -486,5 +573,145 @@ def test_should_ignore_massive_files(reset: None, tmp_path: Path) -> None:
     assert refs_map.keys() == {("file1", "file1.func1", 1)}
 
 
-# TODO: add directories to incremental indexing test
-# TODO: crash consistency tests
+def test_basic_indexing_crash_consistency(reset: None, tmp_path: Path) -> None:
+    """
+    -
+    """
+    project_name = "unfortunate project"
+    project_root = tmp_path / "project_root"
+    crashy_root = Path(__file__).parent / "test_files" / "basic_crash_consistency"
+    project_root.mkdir()
+    shutil.copyfile(crashy_root / "file1.py", project_root / "file1.py")
+
+    project_id = create_project(project_name, project_root)
+
+    # crash after step 3
+    with patch("codegraph.graph.indexing.pipeline.re.compile", side_effect=DeliberateError):
+        with pytest.raises(DeliberateError):
+            run_indexing(project_id, batch_size=1)
+
+    # crash during step 4
+    with patch("codegraph.graph.indexing.pipeline._create_file", side_effect=DeliberateError):
+        with pytest.raises(DeliberateError):
+            run_indexing(project_id, batch_size=1)
+
+    # add file2
+    shutil.copyfile(crashy_root / "file2.py", project_root / "file2.py")
+
+    # crash during step 5
+    with patch(
+        "codegraph.graph.indexing.pipeline.PythonParser.extract_references",
+        side_effect=DeliberateError,
+    ):
+        with pytest.raises(DeliberateError):
+            run_indexing(project_id, batch_size=1)
+
+    # delete file2 and add dir1/__init__, dir1/file4
+    (project_root / "file2.py").unlink()
+    (project_root / "dir1").mkdir()
+    shutil.copyfile(crashy_root / "dir1" / "__init__.py", project_root / "dir1" / "__init__.py")
+    shutil.copyfile(crashy_root / "dir1" / "file4.py", project_root / "dir1" / "file4.py")
+
+    # crash at very end (right before returning, so file1 indexing is complete)
+    with patch("codegraph.graph.indexing.pipeline.IndexingStatus", side_effect=DeliberateError):
+        with pytest.raises(DeliberateError):
+            run_indexing(project_id, batch_size=1)
+
+    # modify dir1/__init__, dir1/file3 and add dir1/file4
+    shutil.copyfile(crashy_root / "dir1" / "__init__new.py", project_root / "dir1" / "__init__.py")
+    shutil.copyfile(crashy_root / "dir1" / "file4new.py", project_root / "dir1" / "file4.py")
+    shutil.copyfile(crashy_root / "dir1" / "file3.py", project_root / "dir1" / "file3.py")
+
+    # should look the same as if there was never a crash
+    # i.e., file1, dir1/__init__new, dir1/file3, dir1/file4new
+    # status shouldn't have file1 as it was indexed pre-crash
+    status = run_indexing(project_id)
+    assert set(status.codegraph_indexed_paths) == {
+        project_root / "dir1" / "__init__.py",
+        project_root / "dir1" / "file3.py",
+        project_root / "dir1" / "file4.py",
+    }
+    assert set(status.vector_indexed_paths) == {
+        project_root / "dir1" / "__init__.py",
+        project_root / "dir1" / "file3.py",
+        project_root / "dir1" / "file4.py",
+    }
+
+    with get_session() as session:
+        projs = session.query(Project).all()
+        files = session.query(File).all()
+        nodes = session.query(Node).all()
+        aliases = session.query(Alias).all()
+
+        source_node = aliased(Node)
+        target_node = aliased(Node)
+        refs = (
+            session.query(Node__Reference, source_node, target_node)
+            .join(source_node, Node__Reference.source_node_id == source_node.id)
+            .join(target_node, Node__Reference.target_node_id == target_node.id)
+            .all()
+        )
+
+    assert len(projs) == 1
+    proj = projs[0]
+    assert proj.id == project_id
+    assert proj.name == project_name
+
+    files_map = {Path(file.path).relative_to(project_root).as_posix(): file for file in files}
+    assert files_map.keys() == {
+        ".",
+        "file1.py",
+        "dir1",
+        "dir1/__init__.py",
+        "dir1/file3.py",
+        "dir1/file4.py",
+    }
+    assert files_map["."].name == "project_root"
+    assert files_map["file1.py"].name == "file1.py"
+    assert files_map["dir1"].name == "dir1"
+    assert files_map["dir1/__init__.py"].name == "__init__.py"
+    assert files_map["dir1/file3.py"].name == "file3.py"
+    assert files_map["dir1/file4.py"].name == "file4.py"
+
+    nodes_map = {node.global_qualifier: node for node in nodes}
+    assert nodes_map.keys() == {
+        "file1",
+        "file1.func1a",
+        "dir1",
+        "dir1.file3",
+        "dir1.file3.func3a",
+        "dir1.file4",
+        "dir1.file4.Class4a",
+        "dir1.file4.Class4a.method4a",
+    }
+    assert nodes_map["file1"].file_id == files_map["file1.py"].id
+    assert nodes_map["file1.func1a"].file_id == files_map["file1.py"].id
+    assert nodes_map["dir1"].file_id == files_map["dir1/__init__.py"].id
+    assert nodes_map["dir1.file3"].file_id == files_map["dir1/file3.py"].id
+    assert nodes_map["dir1.file3.func3a"].file_id == files_map["dir1/file3.py"].id
+    assert nodes_map["dir1.file4"].file_id == files_map["dir1/file4.py"].id
+    assert nodes_map["dir1.file4.Class4a"].file_id == files_map["dir1/file4.py"].id
+    assert nodes_map["dir1.file4.Class4a.method4a"].file_id == files_map["dir1/file4.py"].id
+
+    aliases_map = {(alias.local_qualifier, alias.global_qualifier): alias for alias in aliases}
+    assert aliases_map.keys() == {
+        ("dir1.c4", "dir1.file4.Class4a"),
+        ("dir1.dir1.file3", "dir1.file3"),
+        ("dir1.file4.func3a", "dir1.file3.func3a"),
+    }
+
+    refs_map = {
+        (sn.global_qualifier, tn.global_qualifier, ref.line_number): ref for (ref, sn, tn) in refs
+    }
+    assert refs_map.keys() == {
+        ("file1", "file1.func1a", 2),
+        ("dir1.file3", "dir1.file3.func3a", 1),
+        ("dir1.file4", "dir1.file4.Class4a", 4),
+        ("dir1.file4", "dir1.file4.Class4a.method4a", 6),
+        ("dir1.file4.Class4a", "dir1.file4.Class4a.method4a", 6),
+    }
+
+    # should not do anything (i.e., double-checking updated_at is correctly set)
+    status = run_indexing(project_id)
+    assert status.codegraph_indexed_paths == []
+    assert status.vector_indexed_paths == []

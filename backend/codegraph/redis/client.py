@@ -11,7 +11,7 @@ from codegraph.configs.app_configs import (
 )
 from codegraph.utils.logging import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger()
 
 
 def get_redis_client() -> Redis:

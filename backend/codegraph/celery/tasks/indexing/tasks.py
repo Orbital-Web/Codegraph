@@ -16,7 +16,7 @@ from codegraph.graph.indexing.pipeline import run_indexing as run_indexing_pipel
 from codegraph.redis.client import get_redis_client
 from codegraph.utils.logging import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger()
 
 
 def _get_indexing_lock_name(project_id: int) -> str:

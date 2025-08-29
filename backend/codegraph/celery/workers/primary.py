@@ -6,7 +6,7 @@ from celery.signals import celeryd_init, worker_init
 from codegraph.celery.workers.utils import configure_multiprocessing, initialize_and_wait
 from codegraph.utils.logging import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger()
 
 
 celery_app = Celery(__name__)
