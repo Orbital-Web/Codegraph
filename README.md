@@ -2,7 +2,7 @@
 
 CodeGraph is a CLI-based AI coding assistant that can index your workspace to answer questions about the codebase and fix/write code. It uses an agentic AI flow with access to a variety of MCP tools plus a custom graph (codegraph) of function/classes/modules and their relationships to effectively answer user queries.
 
-The codegraph currently only supports `Python`, although there are other tools that allow the agent to still find relevent information to answer questions. The supported languages for semantic lookup will depend on the embedding model being used. The default model, [codet5p-110m-embedding](https://huggingface.co/Salesforce/codet5p-110m-embedding) supports `Python`, `C`, `C++`, `Go`, `Java`, `JavaScript`, `PHP`, and `Ruby`.
+CodeGraph technically works with any language (human & programming), although the actual graph is currently only indexed for `Python`, and the semantic searching tool will only work for languages the embedding model supports. The default embedding model is [jina-embeddings-v2-base-code](https://huggingface.co/jinaai/jina-embeddings-v2-base-code), and it supports English as well as 30 commonly used programming languages.
 
 The project uses `LangGraph` for the agent, `Postgres` for the codegraph and other tables (+`Alembic` for versioning), `Chroma` for the vectorstore, `Redis` for the cache, and `Celery` for the background tasks.
 <!-- + LiteLLM for managing different models -->

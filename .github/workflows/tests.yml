@@ -32,18 +32,6 @@ jobs:
         run: |
           docker compose -f deployment/docker/docker-compose-dev.yml up -d
 
-      - name: Wait for services to be ready
-        shell: bash
-        run: |
-          echo "Waiting for Postgres on ${POSTGRES_HOST}:${POSTGRES_PORT}"
-          for i in {1..60}; do
-            if (echo > /dev/tcp/${POSTGRES_HOST}/${POSTGRES_PORT}) >/dev/null 2>&1; then
-              echo "Postgres is up"; break; fi; sleep 1; done
-          echo "Waiting for Chroma on ${CHROMA_SERVER_HOST}:${CHROMA_SERVER_PORT}"
-          for i in {1..60}; do
-            if (echo > /dev/tcp/${CHROMA_SERVER_HOST}/${CHROMA_SERVER_PORT}) >/dev/null 2>&1; then
-              echo "Chroma is up"; break; fi; sleep 1; done
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

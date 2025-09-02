@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -26,6 +27,14 @@ class Language(str, Enum):
     RUBY = "ruby"
     RUST = "rust"
     TYPESCRIPT = "typescript"
+
+
+class Chunk(BaseModel):
+    text: str
+    token_count: int
+    file_id: UUID
+    node_ids: list[UUID]
+    language: Language | None
 
 
 class IndexingStep(str, Enum):

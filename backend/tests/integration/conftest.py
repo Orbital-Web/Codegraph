@@ -1,12 +1,14 @@
 import pytest
 
-from codegraph.db.engine import SqlEngine
+from codegraph.utils.configuration import initialize_and_wait_for_services
 from tests.integration.reset import reset_all
 
 
-@pytest.fixture(scope="session", autouse=True)
-def initialize_db() -> None:
-    SqlEngine.init_engine()
+@pytest.fixture(scope="package", autouse=True)
+def initialize_and_wait() -> None:
+    ready = initialize_and_wait_for_services()  # not using celery workers
+    if not ready:
+        pytest.fail("Failed to initialize services")
 
 
 @pytest.fixture()

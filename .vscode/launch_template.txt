@@ -142,6 +142,7 @@
             "args": [
                 "-vv"
                 // Specify a specific module/test to run or provide nothing to run all tests
+                // tests/unit/cli/test_streaming.py::test_streaming_without_code_blocks
             ],
             "presentation": {
                 "group": "3"

@@ -575,7 +575,12 @@ def test_should_ignore_massive_files(reset: None, tmp_path: Path) -> None:
 
 def test_basic_indexing_crash_consistency(reset: None, tmp_path: Path) -> None:
     """
-    -
+    - should handle crash before indexing starts
+    - should handle crash during file processing
+    - should handle crash during node codegraph processing
+    - should handle crash during node vector processing
+    - should handle new/modified/deleted files after crash
+    - should have up-to-date and correct state after crash and re-indexing
     """
     project_name = "unfortunate project"
     project_root = tmp_path / "project_root"
@@ -715,3 +720,6 @@ def test_basic_indexing_crash_consistency(reset: None, tmp_path: Path) -> None:
     status = run_indexing(project_id)
     assert status.codegraph_indexed_paths == []
     assert status.vector_indexed_paths == []
+
+
+# TODO: add vector indexing checks to existing tests

@@ -138,7 +138,8 @@ class Node(Base):
     project: Mapped["Project"] = relationship(back_populates="nodes")
 
     __table_args__ = (
-        Index("ix_nodes_name_project", "name", "project_id"),  # TODO: unused
+        Index("ix_nodes_name_project", "name", "project_id"),
+        # name, file_id covered by ix_nodes_name_project (no need for composite, match is small)
         Index("ix_nodes_type_project", "type", "project_id"),  # TODO: unused
         Index("ix_nodes_file", "file_id"),
         UniqueConstraint(

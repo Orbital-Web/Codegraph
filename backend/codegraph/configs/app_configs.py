@@ -13,7 +13,10 @@ POSTGRES_READONLY_PASSWORD = os.getenv("POSTGRES_READ_ONLY_PASSWORD", "password"
 
 
 ### Index Configs
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "Salesforce/codet5p-110m-embedding")
+CHROMA_HOST = "localhost"
+CHROMA_PORT = 8000
+CHROMA_TENANT = "default_tenant"
+CHROMA_DB = "default_database"
 
 
 ### Redis Configs

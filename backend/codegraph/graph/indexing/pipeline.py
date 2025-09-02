@@ -10,15 +10,18 @@ from redis.lock import Lock
 from sqlalchemy.orm import Session
 
 from codegraph.configs.indexing import (
-    DEFAULT_INDEXING_BATCH_SIZE,
     DIRECTORY_SKIP_INDEXING_PATTERN,
     FILETYPE_LANGUAGES,
     INDEXED_FILETYPES,
+    INDEXING_BATCH_SIZE,
+    INDEXING_CHUNK_OVERLAP,
+    INDEXING_CHUNK_SIZE,
     MAX_INDEXING_FILE_SIZE,
     MAX_INDEXING_WORKERS,
 )
 from codegraph.db.engine import get_session
 from codegraph.db.models import File, Project
+from codegraph.graph.indexing.chunking.chunker import Chunker
 from codegraph.graph.indexing.parsing.base_parser import BaseParser
 from codegraph.graph.indexing.parsing.python_parser import PythonParser
 from codegraph.graph.models import (
@@ -36,7 +39,7 @@ logger = get_logger()
 # NOTE: make sure to update `PARSER_CLASSES` when creating a new parser
 PARSER_CLASSES = [PythonParser]
 
-_PARSER_CLASSES_BY_LANGUAGE: dict[Language | None, type[BaseParser]] = {
+_PARSER_CLASSES_BY_LANGUAGE: dict[Language, type[BaseParser]] = {
     parser_cls._LANGUAGE: parser_cls for parser_cls in PARSER_CLASSES
 }
 
@@ -67,9 +70,12 @@ def create_project(project_name: str, project_root: Path) -> int:
 def run_indexing(
     project_id: int,
     lock: Lock | None = None,
+    *,
     directory_skip_pattern: str = DIRECTORY_SKIP_INDEXING_PATTERN,
     max_filesize: float = MAX_INDEXING_FILE_SIZE,
-    batch_size: int = DEFAULT_INDEXING_BATCH_SIZE,
+    chunk_size: int = INDEXING_CHUNK_SIZE,
+    chunk_overlap: int = INDEXING_CHUNK_OVERLAP,
+    batch_size: int = INDEXING_BATCH_SIZE,
 ) -> IndexingStatus:
     """
     Runs the complete (re)indexing pipeline for a given project. Indexing for the same project
@@ -99,7 +105,9 @@ def run_indexing(
             )
         root_file.last_indexed_at = datetime.now()
 
-        # 3. Create indexing wrapper
+        # 3. Create chunker and indexing wrapper
+        chunker = Chunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+
         def _indexing_wrapper(_file_id: uuid.UUID) -> None:
             with get_session() as _session:
                 _file = _session.query(File).filter(File.id == _file_id).one()
@@ -108,20 +116,21 @@ def run_indexing(
                 _step = _file.indexing_step
                 _filepath = Path(_file.path)
 
-                # TODO: create generic parser for None language (e.g., txt files) to avoid keyerror
-                _parser_cls = _PARSER_CLASSES_BY_LANGUAGE[_file.language]
-                _parser = _parser_cls(project_id, project_root, _filepath, _session)
-
                 # codegraph indexing
-                if _step == IndexingStep.DEFINITIONS:
-                    _parser.extract_definitions()
-                elif _step == IndexingStep.REFERENCES:
-                    _parser.extract_references()
+                if _step in (IndexingStep.DEFINITIONS, IndexingStep.REFERENCES):
+                    assert _file.language is not None
+                    _parser_cls = _PARSER_CLASSES_BY_LANGUAGE[_file.language]
+                    _parser = _parser_cls(project_id, project_root, _filepath, _session)
+
+                    if _step == IndexingStep.DEFINITIONS:
+                        _parser.extract_definitions()
+                    else:
+                        _parser.extract_references()
 
                 # vector indexing
                 elif _step == IndexingStep.VECTOR:
-                    # TODO: maybe call parser to chunk the file then index?
-                    pass
+                    chunker.chunk(_file, _session)
+                    # TODO: store chunks in index
 
                 # update step
                 _file.indexing_step = NEXT_INDEXING_STEPS[_step]
@@ -272,9 +281,7 @@ def _create_file(
 
 
 def _get_batch_files_at_step(
-    project_id: int,
-    indexing_step: IndexingStep,
-    batch_size: int = MAX_INDEXING_WORKERS,  # can be more, tune so lock doesn't expire
+    project_id: int, indexing_step: IndexingStep, batch_size: int = INDEXING_BATCH_SIZE
 ) -> Generator[list[File], None, None]:
     """
     Generator that yields `File`s to index at a given `indexing_step`.
