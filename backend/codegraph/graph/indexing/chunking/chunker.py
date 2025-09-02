@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from codegraph.configs.indexing import INDEXING_CHUNK_OVERLAP, INDEXING_CHUNK_SIZE
 from codegraph.db.models import File, Node
 from codegraph.graph.models import Chunk
-from codegraph.index.chroma import ChromaIndex
+from codegraph.index.chroma import ChromaIndexManager
 from codegraph.utils.logging import get_logger
 
 logger = get_logger()
@@ -26,9 +26,13 @@ class Chunker:
     ):
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap
-        self._tokenizer = ChromaIndex.get_tokenizer()
+        self._tokenizer = ChromaIndexManager.get_tokenizer()
 
     def chunk(self, file: File, session: Session) -> list[Chunk]:
+        """Chunks a file content into smaller pieces. Will attempt to preserve code & sentence
+        structure. If the file is a code file, it will also find the corresponding codegraph nodes
+        referenced in the chunk.
+        """
         filepath = Path(file.path)
         language = file.language
         assert filepath.is_file()
@@ -50,9 +54,14 @@ class Chunker:
             )
 
         chunks = chunker.chunk(file_text)
-        return [self._chonkie_chunk_to_chunk(chunk, file, session) for chunk in chunks]
+        return [
+            self._chonkie_chunk_to_chunk(chunk, chunk_id, file, session)
+            for chunk_id, chunk in enumerate(chunks)
+        ]
 
-    def _chonkie_chunk_to_chunk(self, chunk: ChonkieChunk, file: File, session: Session) -> Chunk:
+    def _chonkie_chunk_to_chunk(
+        self, chunk: ChonkieChunk, chunk_id: int, file: File, session: Session
+    ) -> Chunk:
         if isinstance(chunk, ChonkieCodeChunk):
             assert chunk.nodes is not None
             node_names: set[str] = set()
@@ -69,8 +78,9 @@ class Chunker:
 
         return Chunk(
             text=chunk.text,
-            token_count=chunk.token_count,
             file_id=file.id,
+            chunk_id=chunk_id,
+            token_count=chunk.token_count,
             node_ids=node_ids,
             language=file.language,
         )

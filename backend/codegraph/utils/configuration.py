@@ -1,12 +1,14 @@
 from codegraph.db.engine import SqlEngine, wait_for_db
-from codegraph.index.chroma import ChromaIndex, wait_for_index
+from codegraph.index.chroma import ChromaIndexManager, wait_for_index
 from codegraph.redis.client import wait_for_redis
 
 
 def initialize_and_wait_for_services() -> bool:
     """Initializes and waits for dependent services to be ready. Returns whether all services are
-    ready."""
+    ready.
+    """
     SqlEngine.init_engine()
+    ChromaIndexManager.init_manager()
 
     if not wait_for_redis():
         return False
@@ -14,8 +16,6 @@ def initialize_and_wait_for_services() -> bool:
         return False
     if not wait_for_index():
         return False
-
-    ChromaIndex.init_index()
 
     return True
 

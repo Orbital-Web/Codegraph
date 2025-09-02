@@ -86,6 +86,7 @@ class File(Base):
     path: Mapped[str] = mapped_column(String)
     language: Mapped[Language | None] = mapped_column(String)
     indexing_step: Mapped[IndexingStep] = mapped_column(String)
+    chunks: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     last_indexed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)

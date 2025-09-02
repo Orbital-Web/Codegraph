@@ -1,12 +1,13 @@
 import re
-import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from time import monotonic
 from typing import Generator
+from uuid import UUID
 
 from redis.lock import Lock
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from codegraph.configs.indexing import (
@@ -31,6 +32,7 @@ from codegraph.graph.models import (
     IndexingStep,
     Language,
 )
+from codegraph.index.chroma import ChromaIndexManager
 from codegraph.redis.lock_utils import extend_lock
 from codegraph.utils.logging import get_logger
 
@@ -45,9 +47,8 @@ _PARSER_CLASSES_BY_LANGUAGE: dict[Language, type[BaseParser]] = {
 
 
 def create_project(project_name: str, project_root: Path) -> int:
-    """
-    Creates a `Project` along with its root `File` and adds it to the database. Returns the project
-    id.
+    """Creates a `Project` along with its root `File` and adds it to the database. Returns the
+    project id.
     """
     assert project_root.is_dir()
     project_root = project_root.resolve()
@@ -77,8 +78,7 @@ def run_indexing(
     chunk_overlap: int = INDEXING_CHUNK_OVERLAP,
     batch_size: int = INDEXING_BATCH_SIZE,
 ) -> IndexingStatus:
-    """
-    Runs the complete (re)indexing pipeline for a given project. Indexing for the same project
+    """Runs the complete (re)indexing pipeline for a given project. Indexing for the same project
     should not overlap. If a lock is provided, it will ensure it does not expire while indexing.
     The indexing will pick up where it left off in case of a crash.
     """
@@ -108,7 +108,7 @@ def run_indexing(
         # 3. Create chunker and indexing wrapper
         chunker = Chunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
-        def _indexing_wrapper(_file_id: uuid.UUID) -> None:
+        def _indexing_wrapper(_file_id: UUID) -> None:
             with get_session() as _session:
                 _file = _session.query(File).filter(File.id == _file_id).one()
                 assert _file.indexing_step != IndexingStep.COMPLETE
@@ -129,8 +129,11 @@ def run_indexing(
 
                 # vector indexing
                 elif _step == IndexingStep.VECTOR:
-                    chunker.chunk(_file, _session)
-                    # TODO: store chunks in index
+                    chunks = chunker.chunk(_file, _session)
+                    if chunks:
+                        index = ChromaIndexManager.get_or_create_index(project_id)
+                        index.upsert(chunks)
+                        _file.chunks = len(chunks)
 
                 # update step
                 _file.indexing_step = NEXT_INDEXING_STEPS[_step]
@@ -199,10 +202,24 @@ def run_indexing(
             if path.is_dir():
                 stack.extend((path, current_file) for path in path.iterdir())
 
-        # delete files that haven't been touched
-        session.query(File).filter(
-            File.project_id == project_id, File.last_indexed_at < indexing_start_time
-        ).delete(synchronize_session=False)
+        # find files that haven't been touched
+        deleted_file_ids = list(
+            session.execute(
+                select(File.id).filter(
+                    File.project_id == project_id, File.last_indexed_at < indexing_start_time
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        # delete files that haven't been touched, and their chunks
+        if deleted_file_ids:
+            index = ChromaIndexManager.get_or_create_index(project_id)
+            index.delete(deleted_file_ids, session)
+            session.query(File).filter(File.id.in_(deleted_file_ids)).delete(
+                synchronize_session=False
+            )
 
         # update project languages
         db_project.languages = list(project_languages)
@@ -239,9 +256,7 @@ def run_indexing(
 
 
 def _find_file(filepath: Path, project_id: int, session: Session) -> File | None:
-    """
-    Finds a `File` object in the database.
-    """
+    """Finds a `File` object in the database."""
     return (
         session.query(File)
         .filter(File.project_id == project_id, File.path == filepath.as_posix())
@@ -257,9 +272,7 @@ def _create_file(
     indexing_step: IndexingStep,
     session: Session,
 ) -> File:
-    """
-    Creates a `File` object and adds it to the database. Does not commit the session.
-    """
+    """Creates a `File` object and adds it to the database. Does not commit the session."""
     file_stats = filepath.stat()
     created_at = datetime.fromtimestamp(file_stats.st_ctime)
     updated_at = datetime.fromtimestamp(file_stats.st_mtime)
@@ -283,9 +296,7 @@ def _create_file(
 def _get_batch_files_at_step(
     project_id: int, indexing_step: IndexingStep, batch_size: int = INDEXING_BATCH_SIZE
 ) -> Generator[list[File], None, None]:
-    """
-    Generator that yields `File`s to index at a given `indexing_step`.
-    """
+    """Generator that yields `File`s to index at a given `indexing_step`."""
     assert indexing_step != IndexingStep.COMPLETE
 
     while True:

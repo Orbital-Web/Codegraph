@@ -6,9 +6,7 @@ from colorama import Fore, Style
 
 
 def _format_code(code_block: str, project_root: Path, file_path: Path) -> str:
-    """
-    Formats a code block in the same format as GitHub diffs, using color.
-    """
+    """Formats a code block in the same format as GitHub diffs, using color."""
     new_lines = code_block.splitlines()
     old_lines: list[str] = []
 
@@ -44,9 +42,8 @@ def _format_code(code_block: str, project_root: Path, file_path: Path) -> str:
 def stream_with_code_format(
     project_root: Path, stream: Iterable[str]
 ) -> Generator[str, None, None]:
-    """
-    Stream text with code diff support. Assumes the line immediately before the start of
-    a code block contains the path to the file being edited.
+    """Stream text with code diff support. Assumes the line immediately before the start of a code
+    block contains the path to the file being edited.
     """
     buffer = ""
     in_code_block = False

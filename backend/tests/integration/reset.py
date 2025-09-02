@@ -2,7 +2,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from codegraph.index.chroma import ChromaIndex
+from codegraph.index.chroma import ChromaIndexManager
 from codegraph.utils.logging import get_logger
 
 logger = get_logger()
@@ -18,7 +18,7 @@ def reset_db() -> None:
 
 
 def reset_index() -> None:
-    ChromaIndex.wipe_collection()
+    ChromaIndexManager.delete_all_indices()
 
 
 def reset_all() -> None:

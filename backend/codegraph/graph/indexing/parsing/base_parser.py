@@ -15,10 +15,9 @@ class BaseParser(ABC):
     _LANGUAGE: ClassVar[Language | None] = None
 
     def __init__(self, project_id: int, project_root: Path, filepath: Path, session: Session):
-        """
-        Initializes the parser. `filepath` is absolute. `session` is unique to this parser. Either
-        `extract_definitions` or `extract_references` will run exactly once per parser. The given
-        `session` should not be committed.
+        """Initializes the parser. `filepath` is absolute. `session` is unique to this parser.
+        Either `extract_definitions` or `extract_references` will run exactly once per parser. The
+        given `session` should not be committed.
         """
         assert filepath.is_file()
 
@@ -34,23 +33,19 @@ class BaseParser(ABC):
 
     @abstractmethod
     def extract_definitions(self) -> None:
-        """
-        Extracts defined `Node`s, definition `Node__Reference`s, and `Alias`es in the file. Its
+        """Extracts defined `Node`s, definition `Node__Reference`s, and `Alias`es in the file. Its
         internal variables are only visible to this parser.
         """
 
     @abstractmethod
     def extract_references(self) -> None:
-        """
-        Extracts `Node__Reference`s between `Node`s defined both in and outside this file. Its
+        """Extracts `Node__Reference`s between `Node`s defined both in and outside this file. Its
         internal variables are only visible to this parser. Always runs after `extract_definitions`
         runs for all files in the project.
         """
 
     def _find_node(self, global_qualifier: str) -> Node | None:
-        """
-        Finds a `Node` object in the database.
-        """
+        """Finds a `Node` object in the database."""
         return (
             self._session.query(Node)
             .filter(Node.project_id == self._project_id, Node.global_qualifier == global_qualifier)
@@ -60,9 +55,7 @@ class BaseParser(ABC):
     def _create_node(
         self, name: str, global_qualifier: str, definition: str | None, node_type: NodeType
     ) -> Node:
-        """
-        Creates a `Node` object and adds it to the database. Does not commit the session.
-        """
+        """Creates a `Node` object and adds it to the database. Does not commit the session."""
         db_node = Node(
             name=name,
             global_qualifier=global_qualifier,
@@ -76,9 +69,7 @@ class BaseParser(ABC):
         return db_node
 
     def _create_alias(self, local_qualifier: str, global_qualifier: str) -> Alias:
-        """
-        Creates an `Alias` object and adds it to the database. Does not commit the session.
-        """
+        """Creates an `Alias` object and adds it to the database. Does not commit the session."""
         db_alias = Alias(
             local_qualifier=local_qualifier,
             global_qualifier=global_qualifier,
@@ -92,8 +83,8 @@ class BaseParser(ABC):
     def _create_reference(
         self, source_node: Node, target_node: Node, line_number: int
     ) -> Node__Reference:
-        """
-        Creates a `Node__Reference` object and adds it to the database. Does not commit the session.
+        """Creates a `Node__Reference` object and adds it to the database. Does not commit the
+        session.
         """
         db_reference = Node__Reference(
             source_node_id=source_node.id, target_node_id=target_node.id, line_number=line_number
@@ -103,8 +94,7 @@ class BaseParser(ABC):
         return db_reference
 
     def _resolve_alias(self, local_qualifier: str) -> Node | None:
-        """
-        Recursively traverses the `Alias` tree to find the `Node` referenced by the
+        """Recursively traverses the `Alias` tree to find the `Node` referenced by the
         `local_qualifier`. Returns `None` if the `local_qualifier` is not found.
         """
         parts = local_qualifier.split(".")

@@ -40,6 +40,8 @@ def get_connection_endpoint(readonly: bool = False) -> str:
 
 
 class SqlEngine:
+    """A class for handling database session creation and management."""
+
     _write_engine: Engine | None = None
     _read_engine: Engine | None = None
 
