@@ -105,8 +105,9 @@ def run_indexing(
             )
         root_file.last_indexed_at = datetime.now()
 
-        # 3. Create chunker and indexing wrapper
+        # 3. Create indexing helpers
         chunker = Chunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        index = ChromaIndexManager.get_or_create_index(project_id)
 
         def _indexing_wrapper(_file_id: UUID) -> None:
             with get_session() as _session:
@@ -129,11 +130,9 @@ def run_indexing(
 
                 # vector indexing
                 elif _step == IndexingStep.VECTOR:
-                    chunks = chunker.chunk(_file, _session)
-                    if chunks:
-                        index = ChromaIndexManager.get_or_create_index(project_id)
-                        index.upsert(chunks)
-                        _file.chunks = len(chunks)
+                    if _chunks := chunker.chunk(_file, _session):
+                        index.upsert(_chunks)
+                        _file.chunks = len(_chunks)
 
                 # update step
                 _file.indexing_step = NEXT_INDEXING_STEPS[_step]
@@ -165,13 +164,14 @@ def run_indexing(
 
             current_file = _find_file(path, project_id, session)
 
-            # delete `File` if it's a file and has been modified since last indexed
+            # delete `File` and its chunks if it's a file and has been modified since last indexed
             updated_at = datetime.fromtimestamp(file_stats.st_mtime)
             if (
                 current_file is not None
                 and path.is_file()
                 and updated_at > current_file.last_indexed_at
             ):
+                index.delete(current_file)
                 session.delete(current_file)
                 session.flush()
                 current_file = None
@@ -215,8 +215,7 @@ def run_indexing(
 
         # delete files that haven't been touched, and their chunks
         if deleted_file_ids:
-            index = ChromaIndexManager.get_or_create_index(project_id)
-            index.delete(deleted_file_ids, session)
+            index.delete_ids(deleted_file_ids, session)
             session.query(File).filter(File.id.in_(deleted_file_ids)).delete(
                 synchronize_session=False
             )

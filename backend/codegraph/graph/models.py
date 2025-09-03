@@ -38,18 +38,6 @@ class Chunk(BaseModel):
     node_ids: list[UUID]
     language: Language | None
 
-    @property
-    def id(self) -> str:
-        return f"{self.file_id}:{self.chunk_id}"
-
-    @property
-    def metadata(self) -> dict[str, str | int | float | bool | None]:
-        return {
-            "token_count": self.token_count,
-            "node_ids": ",".join(str(node_id) for node_id in self.node_ids),
-            "language": self.language.value if self.language else "",
-        }
-
 
 class InferenceChunk(Chunk):
     score: float

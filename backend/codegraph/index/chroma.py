@@ -18,7 +18,14 @@ from codegraph.configs.app_configs import (
 )
 from codegraph.configs.indexing import EMBEDDING_MODEL, NUM_RETRIEVED_CHUNKS
 from codegraph.db.models import File
-from codegraph.graph.models import Chunk, InferenceChunk, Language
+from codegraph.graph.models import Chunk, InferenceChunk
+from codegraph.index.chunk_utils import (
+    doc_to_chunk,
+    doc_to_inference_chunk,
+    get_chunk_doc_id,
+    get_chunk_doc_metadata,
+    get_doc_id,
+)
 from codegraph.utils.logging import get_logger
 
 logger = get_logger()
@@ -105,7 +112,7 @@ class ChromaIndexManager:
 
 
 class ChromaIndex:
-    """A class for indexing and querying chunks in a collection."""
+    """A thread-safe class for indexing and querying chunks in a collection."""
 
     def __init__(self, project_id: int, collection: Collection) -> None:
         self.project_id = project_id
@@ -116,19 +123,25 @@ class ChromaIndex:
         metadata will get updated.
         """
         self.collection.upsert(
-            ids=[chunk.id for chunk in chunks],
+            ids=[get_chunk_doc_id(chunk) for chunk in chunks],
             documents=[chunk.text for chunk in chunks],
-            metadatas=[chunk.metadata for chunk in chunks],
+            metadatas=[get_chunk_doc_metadata(chunk) for chunk in chunks],
         )
 
-    def delete(self, file_ids: list[UUID], session: Session) -> None:
-        """Deletes every chunk for the given list of `file_ids`. Requires a db session to find the
-        chunks.
+    def delete(self, file: File) -> None:
+        """Deletes chunks associated with the given `file`. Does not modify the `file` database
+        object."""
+        chunk_ids = [get_doc_id(file.id, chunk_id) for chunk_id in range(file.chunks)]
+        if chunk_ids:
+            self.collection.delete(ids=chunk_ids)
+
+    def delete_ids(self, file_ids: list[UUID], session: Session) -> None:
+        """Deletes chunks associated with the given list of `file_ids`. Does not modify the `File`
+        database objects. The `File` objects must still exist for this function to work.
         """
         chunk_ids: list[str] = []
         for row in session.query(File.id, File.chunks).filter(File.id.in_(file_ids)).all():
-            # TODO: create helper so behavior is consistent
-            chunk_ids.extend(f"{row.id}:{chunk_id}" for chunk_id in range(row.chunks))
+            chunk_ids.extend(get_doc_id(row.id, chunk_id) for chunk_id in range(row.chunks))
         if chunk_ids:
             self.collection.delete(ids=chunk_ids)
 
@@ -154,18 +167,8 @@ class ChromaIndex:
             include=["documents", "metadatas", "distances"],
         )
         return [
-            # TODO: refactor this and models.Chunk, models.InferenceChunk for consistent conversions
-            # TODO: maybe a chunk_utils.py inside index
-            InferenceChunk(
-                text=text,
-                file_id=UUID(chunk_id.split(":", 1)[0]),
-                chunk_id=int(chunk_id.split(":", 1)[1]),
-                token_count=cast(int, metadata["token_count"]),
-                node_ids=[UUID(node_id) for node_id in cast(str, metadata["node_ids"]).split(",")],
-                language=Language(metadata["language"]) if metadata["language"] else None,
-                score=score,
-            )
-            for chunk_id, text, metadata, score in zip(
+            doc_to_inference_chunk(*doc_data)
+            for doc_data in zip(
                 results["ids"][0],
                 (results["documents"] or [])[0],
                 (results["metadatas"] or [])[0],
@@ -192,15 +195,8 @@ class ChromaIndex:
         )
 
         return [
-            Chunk(
-                text=text,
-                file_id=UUID(chunk_id.split(":", 1)[0]),
-                chunk_id=int(chunk_id.split(":", 1)[1]),
-                token_count=cast(int, metadata["token_count"]),
-                node_ids=[UUID(node_id) for node_id in cast(str, metadata["node_ids"]).split(",")],
-                language=Language(metadata["language"]) if metadata["language"] else None,
-            )
-            for chunk_id, text, metadata in zip(
+            doc_to_chunk(*doc_data)
+            for doc_data in zip(
                 results["ids"],
                 results["documents"] or [],
                 results["metadatas"] or [],

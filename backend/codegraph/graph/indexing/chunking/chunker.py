@@ -19,7 +19,7 @@ logger = get_logger()
 
 
 class Chunker:
-    """A class that chunks text/code into smaller pieces for indexing."""
+    """A thread-safe class that chunks text/code into smaller pieces for indexing."""
 
     def __init__(
         self, chunk_size: int = INDEXING_CHUNK_SIZE, chunk_overlap: int = INDEXING_CHUNK_OVERLAP
