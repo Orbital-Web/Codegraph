@@ -35,7 +35,11 @@ def split_doc_metadata(doc_metadata: Metadata) -> dict[str, Any]:
     """Returns the corresponding chunk `metadata` for a given index `doc_metadata`."""
     return {
         "token_count": cast(int, doc_metadata["token_count"]),
-        "node_ids": [UUID(node_id) for node_id in cast(str, doc_metadata["node_ids"]).split(",")],
+        "node_ids": (
+            [UUID(node_id) for node_id in cast(str, doc_metadata["node_ids"]).split(",")]
+            if doc_metadata["node_ids"]
+            else []
+        ),
         "language": Language(doc_metadata["language"]) if doc_metadata["language"] else None,
     }
 

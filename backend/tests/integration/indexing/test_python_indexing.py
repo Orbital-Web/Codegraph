@@ -9,6 +9,7 @@ from codegraph.db.engine import get_session
 from codegraph.db.models import Alias, File, Node, Node__Reference, Project
 from codegraph.graph.indexing.pipeline import create_project, run_indexing
 from codegraph.graph.models import Language, NodeType
+from codegraph.index.chroma import ChromaIndexManager
 
 
 class DeliberateError(Exception):
@@ -27,6 +28,8 @@ def test_basic(reset: None) -> None:
     - node: nested Function and Class nodes
     - refs: between Module node and Function/Class nodes
     - refs: between nested Function/Class nodes
+    - chunk: should be indexed if file is not empty
+    - chunk: should reference Function and Class nodes defined in that chunk
     """
     project_name = "cool project"
     project_root = Path(__file__).parent / "test_files" / "basic"
@@ -54,23 +57,20 @@ def test_basic(reset: None) -> None:
     assert proj.name == project_name
 
     files_map = {Path(file.path).relative_to(project_root).as_posix(): file for file in files}
-    assert files_map.keys() == {".", "file.py", "error_file.py"}
-    file1 = files_map["."]
-    file2 = files_map["file.py"]
-    file3 = files_map["error_file.py"]
-    assert proj.root_file_id == file1.id
-    assert file1.name == "basic"
-    assert file1.parent_id is None
-    assert file1.project_id == proj.id
-    assert file1.language is None
-    assert file2.name == "file.py"
-    assert file2.parent_id == file1.id
-    assert file2.project_id == proj.id
-    assert file2.language == Language.PYTHON
-    assert file3.name == "error_file.py"
-    assert file3.parent_id == file1.id
-    assert file3.project_id == proj.id
-    assert file3.language == Language.PYTHON
+    assert files_map.keys() == {".", "file.py", "error_file.py", "text.txt"}
+    for file_path, file in files_map.items():
+        assert file.project_id == project_id
+        if file_path.endswith(".py"):
+            assert file.language == Language.PYTHON
+        else:
+            assert file.language is None
+
+        if file_path == ".":
+            assert file.parent_id is None
+            assert file.name == "basic"
+        else:
+            assert file.parent_id == files_map["."].id
+            assert file.name == file_path.split("/")[-1]
 
     nodes_map = {node.global_qualifier: node for node in nodes}
     assert nodes_map.keys() == {
@@ -86,7 +86,7 @@ def test_basic(reset: None) -> None:
         "file.OuterClass.InnerClass",
     }
     for node in nodes:
-        assert node.file_id == file2.id
+        assert node.file_id == files_map["file.py"].id
         assert node.project_id == proj.id
         if node.global_qualifier == "file":
             assert node.type == NodeType.MODULE
@@ -122,6 +122,26 @@ def test_basic(reset: None) -> None:
         ("file", "file.OuterClass.InnerClass", 27),
         ("file.OuterClass", "file.OuterClass.InnerClass", 27),
     }
+
+    index = ChromaIndexManager.get_or_create_index(project_id)
+    chunks = index.get()
+    chunks_map = {(chunk.file_id, chunk.chunk_id): chunk for chunk in chunks}
+    assert chunks_map.keys() == {
+        (files_map["file.py"].id, 0),
+        (files_map["error_file.py"].id, 0),
+        (files_map["text.txt"].id, 0),
+    }
+    for chunk in chunks:
+        if chunk.file_id != files_map["text.txt"].id:
+            assert chunk.language == Language.PYTHON
+        else:
+            assert chunk.language is None
+
+        assert set(chunk.node_ids) == {
+            node.id
+            for node in nodes
+            if node.file_id == chunk.file_id and node.type != NodeType.MODULE
+        }
 
 
 def test_basic_import(reset: None) -> None:
@@ -171,25 +191,21 @@ def test_basic_import(reset: None) -> None:
         "module2/__init__.py",
         "module2/file4.py",
     }
-    root_file = files_map["."]
-    assert proj.root_file_id == root_file.id
-    assert root_file.parent_id is None
-    module1_file = files_map["module1"]
-    module2_file = files_map["module2"]
-    assert module1_file.parent_id == root_file.id
-    assert module2_file.parent_id == root_file.id
-    assert files_map["file1.py"].parent_id == root_file.id
-    assert files_map["file2.py"].parent_id == root_file.id
-    assert files_map["module1/__init__.py"].parent_id == module1_file.id
-    assert files_map["module1/file3.py"].parent_id == module1_file.id
-    assert files_map["module2/__init__.py"].parent_id == module2_file.id
-    assert files_map["module2/file4.py"].parent_id == module2_file.id
-    for filepath, file in files_map.items():
-        assert file.project_id == proj.id
-        if filepath.endswith(".py"):
+    for file_path, file in files_map.items():
+        assert file.project_id == project_id
+        if file_path.endswith(".py"):
             assert file.language == Language.PYTHON
         else:
             assert file.language is None
+
+        if file_path == ".":
+            assert file.parent_id is None
+            assert file.name == "basic_import"
+        else:
+            path_split = file_path.split("/")
+            parent_path = "/".join(path_split[:-1]) or "."
+            assert file.parent_id == files_map[parent_path].id
+            assert file.name == path_split[-1]
 
     nodes_map = {node.global_qualifier: node for node in nodes}
     assert nodes_map.keys() == {
@@ -244,10 +260,29 @@ def test_basic_import(reset: None) -> None:
         ("module2.file4", "module2.file4.func4b", 5),
     }
 
+    index = ChromaIndexManager.get_or_create_index(project_id)
+    chunks = index.get()
+    chunks_map = {(chunk.file_id, chunk.chunk_id): chunk for chunk in chunks}
+    assert chunks_map.keys() == {
+        (files_map["file1.py"].id, 0),
+        (files_map["file2.py"].id, 0),
+        (files_map["module1/__init__.py"].id, 0),
+        (files_map["module1/file3.py"].id, 0),
+        (files_map["module2/file4.py"].id, 0),
+    }
+    for chunk in chunks:
+        assert chunk.language == Language.PYTHON
+        assert set(chunk.node_ids) == {
+            node.id
+            for node in nodes
+            if node.file_id == chunk.file_id and node.type != NodeType.MODULE
+        }
+
 
 def test_deleting_root_should_delete_project(reset: None, tmp_path: Path) -> None:
     """
     - proj: should be deleted if root no longer exists
+    - chunk: should also be deleted alongside project
     """
     project_name = "cool project"
     project_root = tmp_path / "project_root"
@@ -268,10 +303,14 @@ def test_deleting_root_should_delete_project(reset: None, tmp_path: Path) -> Non
     proj = projs[0]
     assert proj.id == project_id
     assert proj.name == project_name
-    assert len(files) == 3
+    assert len(files) == 4
     assert len(nodes) == 10
     assert len(aliases) == 0
     assert len(refs) == 14
+
+    index = ChromaIndexManager.get_or_create_index(project_id)
+    chunks = index.get()
+    assert len(chunks) == 3
 
     # delete root and re-index
     shutil.rmtree(project_root)
@@ -290,16 +329,20 @@ def test_deleting_root_should_delete_project(reset: None, tmp_path: Path) -> Non
     assert len(aliases) == 0
     assert len(refs) == 0
 
+    index = ChromaIndexManager.get_or_create_index(project_id)
+    chunks = index.get()
+    assert len(chunks) == 0
+
 
 def test_basic_incremental_indexing(reset: None, tmp_path: Path) -> None:
     """
-    - should leave file/node/alias/refs intact if file is not modified (__init__.py too)
-    - should create file/node/alias/refs if file is new (__init__.py too)
-    - should delete and recreate file/node/alias/refs if file is modified (__init__.py too)
-    - should delete file/node/alias/refs if file is deleted (__init__.py too)
+    - should leave file/node/alias/refs/chunks intact if file is not modified (__init__.py too)
+    - should create file/node/alias/refs/chunks if file is new (__init__.py too)
+    - should delete and recreate file/node/alias/refs/chunks if file is modified (__init__.py too)
+    - should delete file/node/alias/refs/chunks if file is deleted (__init__.py too)
     - should leave file intact if directory is not modified
     - should create file if directory is new
-    - should delete file/node/alias/refs for both directory and child if directory is deleted
+    - should delete file/node/alias/refs/chunks for both directory and child if directory is deleted
     """
     project_name = "updated project"
     project_root = tmp_path / "project_root"
@@ -343,18 +386,23 @@ def test_basic_incremental_indexing(reset: None, tmp_path: Path) -> None:
         "dir2",
         "dir2/__init__.py",
         "dir2/file8.py",
+        "dir2/file9.txt",
     }
-    assert files_map["."].name == "project_root"
-    assert files_map["file1.py"].name == "file1.py"
-    assert files_map["file2.py"].name == "file2.py"
-    assert files_map["file3.py"].name == "file3.py"
-    assert files_map["dir1"].name == "dir1"
-    assert files_map["dir1/__init__.py"].name == "__init__.py"
-    assert files_map["dir1/file5.py"].name == "file5.py"
-    assert files_map["dir1/file6.py"].name == "file6.py"
-    assert files_map["dir2"].name == "dir2"
-    assert files_map["dir2/__init__.py"].name == "__init__.py"
-    assert files_map["dir2/file8.py"].name == "file8.py"
+    for file_path, file in files_map.items():
+        assert file.project_id == project_id
+        if file_path.endswith(".py"):
+            assert file.language == Language.PYTHON
+        else:
+            assert file.language is None
+
+        if file_path == ".":
+            assert file.parent_id is None
+            assert file.name == "project_root"
+        else:
+            path_split = file_path.split("/")
+            parent_path = "/".join(path_split[:-1]) or "."
+            assert file.parent_id == files_map[parent_path].id
+            assert file.name == path_split[-1]
 
     nodes_map = {node.global_qualifier: node for node in nodes}
     assert nodes_map.keys() == {
@@ -402,7 +450,32 @@ def test_basic_incremental_indexing(reset: None, tmp_path: Path) -> None:
         ("dir1.file6", "dir1.file6.func6a", 2),
     }
 
+    index = ChromaIndexManager.get_or_create_index(project_id)
+    chunks = index.get()
+    chunks_map = {(chunk.file_id, chunk.chunk_id): chunk for chunk in chunks}
+    assert chunks_map.keys() == {
+        (files_map["file1.py"].id, 0),
+        (files_map["file2.py"].id, 0),
+        (files_map["file3.py"].id, 0),
+        (files_map["dir1/__init__.py"].id, 0),
+        (files_map["dir1/file5.py"].id, 0),
+        (files_map["dir1/file6.py"].id, 0),
+        (files_map["dir2/file9.txt"].id, 0),
+    }
+    for chunk in chunks:
+        if chunk.file_id != files_map["dir2/file9.txt"].id:
+            assert chunk.language == Language.PYTHON
+        else:
+            assert chunk.language is None
+
+        assert set(chunk.node_ids) == {
+            node.id
+            for node in nodes
+            if node.file_id == chunk.file_id and node.type != NodeType.MODULE
+        }
+
     # modify project and re-index (copyfile will set updated_at to now, unlike copytree)
+    # + file4, dir1/file7, dir3, - dir2, file3, dir1/file6, * file1, dir1/__init__, dir1/file5
     shutil.copyfile(incremental_root / "new" / "file1.py", project_root / "file1.py")
     shutil.copyfile(incremental_root / "new" / "file4.py", project_root / "file4.py")
     shutil.copyfile(
@@ -468,15 +541,21 @@ def test_basic_incremental_indexing(reset: None, tmp_path: Path) -> None:
         "dir1/file7.py",
         "dir3",
     }
-    assert files_map["."].name == "project_root"
-    assert files_map["file1.py"].name == "file1.py"
-    assert files_map["file2.py"].name == "file2.py"
-    assert files_map["file4.py"].name == "file4.py"
-    assert files_map["dir1"].name == "dir1"
-    assert files_map["dir1/__init__.py"].name == "__init__.py"
-    assert files_map["dir1/file5.py"].name == "file5.py"
-    assert files_map["dir1/file7.py"].name == "file7.py"
-    assert files_map["dir3"].name == "dir3"
+    for file_path, file in files_map.items():
+        assert file.project_id == project_id
+        if file_path.endswith(".py"):
+            assert file.language == Language.PYTHON
+        else:
+            assert file.language is None
+
+        if file_path == ".":
+            assert file.parent_id is None
+            assert file.name == "project_root"
+        else:
+            path_split = file_path.split("/")
+            parent_path = "/".join(path_split[:-1]) or "."
+            assert file.parent_id == files_map[parent_path].id
+            assert file.name == path_split[-1]
 
     nodes_map = {node.global_qualifier: node for node in nodes}
     assert nodes_map.keys() == {
@@ -518,6 +597,25 @@ def test_basic_incremental_indexing(reset: None, tmp_path: Path) -> None:
         ("dir1", "dir1.bar", 2),
         ("dir1.file7", "dir1.file7.func7a", 2),
     }
+
+    index = ChromaIndexManager.get_or_create_index(project_id)
+    chunks = index.get()
+    chunks_map = {(chunk.file_id, chunk.chunk_id): chunk for chunk in chunks}
+    assert chunks_map.keys() == {
+        (files_map["file1.py"].id, 0),
+        (files_map["file2.py"].id, 0),
+        (files_map["file4.py"].id, 0),
+        (files_map["dir1/__init__.py"].id, 0),
+        (files_map["dir1/file5.py"].id, 0),
+        (files_map["dir1/file7.py"].id, 0),
+    }
+    for chunk in chunks:
+        assert chunk.language == Language.PYTHON
+        assert set(chunk.node_ids) == {
+            node.id
+            for node in nodes
+            if node.file_id == chunk.file_id and node.type != NodeType.MODULE
+        }
 
 
 def test_should_ignore_massive_files(reset: None, tmp_path: Path) -> None:
@@ -571,6 +669,14 @@ def test_should_ignore_massive_files(reset: None, tmp_path: Path) -> None:
         (sn.global_qualifier, tn.global_qualifier, ref.line_number): ref for (ref, sn, tn) in refs
     }
     assert refs_map.keys() == {("file1", "file1.func1", 1)}
+
+    index = ChromaIndexManager.get_or_create_index(project_id)
+    chunks = index.get()
+    chunks_map = {(chunk.file_id, chunk.chunk_id): chunk for chunk in chunks}
+    assert chunks_map.keys() == {(files_map["file1.py"].id, 0)}
+    chunk = chunks_map[(files_map["file1.py"].id, 0)]
+    assert chunk.language == Language.PYTHON
+    assert set(chunk.node_ids) == {node.id for node in nodes if node.type != NodeType.MODULE}
 
 
 def test_basic_indexing_crash_consistency(reset: None, tmp_path: Path) -> None:
@@ -671,12 +777,21 @@ def test_basic_indexing_crash_consistency(reset: None, tmp_path: Path) -> None:
         "dir1/file3.py",
         "dir1/file4.py",
     }
-    assert files_map["."].name == "project_root"
-    assert files_map["file1.py"].name == "file1.py"
-    assert files_map["dir1"].name == "dir1"
-    assert files_map["dir1/__init__.py"].name == "__init__.py"
-    assert files_map["dir1/file3.py"].name == "file3.py"
-    assert files_map["dir1/file4.py"].name == "file4.py"
+    for file_path, file in files_map.items():
+        assert file.project_id == project_id
+        if file_path.endswith(".py"):
+            assert file.language == Language.PYTHON
+        else:
+            assert file.language is None
+
+        if file_path == ".":
+            assert file.parent_id is None
+            assert file.name == "project_root"
+        else:
+            path_split = file_path.split("/")
+            parent_path = "/".join(path_split[:-1]) or "."
+            assert file.parent_id == files_map[parent_path].id
+            assert file.name == path_split[-1]
 
     nodes_map = {node.global_qualifier: node for node in nodes}
     assert nodes_map.keys() == {
@@ -716,10 +831,24 @@ def test_basic_indexing_crash_consistency(reset: None, tmp_path: Path) -> None:
         ("dir1.file4.Class4a", "dir1.file4.Class4a.method4a", 6),
     }
 
+    index = ChromaIndexManager.get_or_create_index(project_id)
+    chunks = index.get()
+    chunks_map = {(chunk.file_id, chunk.chunk_id): chunk for chunk in chunks}
+    assert chunks_map.keys() == {
+        (files_map["file1.py"].id, 0),
+        (files_map["dir1/__init__.py"].id, 0),
+        (files_map["dir1/file3.py"].id, 0),
+        (files_map["dir1/file4.py"].id, 0),
+    }
+    for chunk in chunks:
+        assert chunk.language == Language.PYTHON
+        assert set(chunk.node_ids) == {
+            node.id
+            for node in nodes
+            if node.file_id == chunk.file_id and node.type != NodeType.MODULE
+        }
+
     # should not do anything (i.e., double-checking updated_at is correctly set)
     status = run_indexing(project_id)
     assert status.codegraph_indexed_paths == []
     assert status.vector_indexed_paths == []
-
-
-# TODO: add vector indexing checks to existing tests

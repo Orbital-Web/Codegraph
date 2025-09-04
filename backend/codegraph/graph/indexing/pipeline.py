@@ -94,7 +94,9 @@ def run_indexing(
         assert root_file.path == db_project.root_path
 
         # 2. Delete project if root no longer exists, otherwise update last indexed time
-        if not project_root.exists():
+        index = ChromaIndexManager.get_or_create_index(project_id)
+        if not project_root.is_dir():
+            ChromaIndexManager.delete_index(project_id)
             session.delete(db_project)
             session.commit()
             return IndexingStatus(
@@ -107,7 +109,6 @@ def run_indexing(
 
         # 3. Create indexing helpers
         chunker = Chunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-        index = ChromaIndexManager.get_or_create_index(project_id)
 
         def _indexing_wrapper(_file_id: UUID) -> None:
             with get_session() as _session:
