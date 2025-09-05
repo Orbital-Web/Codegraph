@@ -7,12 +7,14 @@ chonkie[code]==1.2.1
 chromadb==1.0.20
 colorama==0.4.6
 isort==6.0.1
+litellm==1.76.2
 mypy==1.17.1
 optimum==1.27.0
 psycopg2-binary==2.9.10
 pydantic==2.11.7
 pytest==8.4.1
 python-dotenv==1.1.1
+RapidFuzz==3.14.0
 redis==6.4.0
 sentence-transformers==5.1.0
 SQLAlchemy[mypy]==2.0.43
