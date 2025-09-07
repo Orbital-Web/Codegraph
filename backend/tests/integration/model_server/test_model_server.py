@@ -78,7 +78,7 @@ def test_embed_concurrent() -> None:
 
 
 def test_embed_rejects_empty_list() -> None:
-    texts = []
+    texts: list[str] = []
     with pytest.raises(HTTPError):
         embed_texts(texts)
 
