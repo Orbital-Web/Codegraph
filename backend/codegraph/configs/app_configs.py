@@ -1,5 +1,12 @@
 import os
 
+### General
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper()
+
+READINESS_TIMEOUT = int(os.getenv("READINESS_TIMEOUT", "60"))
+READINESS_INTERVAL = int(os.getenv("READINESS_INTERVAL", "5"))
+
+
 ### DB Configs
 POSTGRES_HOST = "localhost"
 POSTGRES_PORT = 5432
@@ -28,6 +35,17 @@ REDIS_DB_NUMBER_CELERY = int(os.getenv("REDIS_DB_NUMBER_CELERY", "15"))
 REDIS_DB_NUMBER_CELERY_RESULTS = int(os.getenv("REDIS_DB_NUMBER_CELERY_RESULTS", "14"))
 
 
-### General
-READINESS_TIMEOUT = int(os.getenv("READINESS_TIMEOUT", "60"))
-READINESS_INTERVAL = int(os.getenv("READINESS_INTERVAL", "5"))
+### Model Server Configs
+MODEL_SERVER_HOST = "localhost"
+MODEL_SERVER_PORT = 9000
+
+MODEL_SERVER_MAX_RETRIES = 3
+MODEL_SERVER_RETRY_WAIT_MS = 100
+
+MODEL_SERVER_ALLOW_USE_GPU = os.getenv("MODEL_SERVER_ALLOW_USE_GPU", "true").lower() == "true"
+MODEL_SERVER_GPU_MAX_BATCH_SIZE = int(
+    os.getenv("MODEL_SERVER_GPU_MAX_BATCH_SIZE", "16")
+)  # batch size to pass to GPU, tune based on GPU memory, chunk size, and model
+MODEL_SERVER_GPU_BATCH_WAIT_MS = int(
+    os.getenv("MODEL_SERVER_GPU_BATCH_WAIT_MS", "50")
+)  # ms to wait after receiving first request to collect a bigger batch for higher GPU throughput

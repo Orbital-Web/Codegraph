@@ -4,10 +4,7 @@ from typing import Type, TypeVar
 from pydantic import BaseModel
 
 from codegraph.agent.llm.chat_llm import LLM
-from codegraph.agent.llm.models import (
-    BaseMessage,
-    ReasoningEffort,
-)
+from codegraph.agent.llm.models import BaseMessage, ReasoningEffort
 
 SchemaType = TypeVar("SchemaType", bound=BaseModel)
 

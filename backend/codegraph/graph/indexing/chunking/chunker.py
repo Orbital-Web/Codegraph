@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from codegraph.configs.indexing import INDEXING_CHUNK_OVERLAP, INDEXING_CHUNK_SIZE
 from codegraph.db.models import File, Node
 from codegraph.graph.models import Chunk
-from codegraph.index.chroma import ChromaIndexManager
+from codegraph.model_service.client import count_tokens
 from codegraph.utils.logging import get_logger
 
 logger = get_logger()
@@ -26,7 +26,6 @@ class Chunker:
     ):
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap
-        self._tokenizer = ChromaIndexManager.get_tokenizer()
 
     def chunk(self, file: File, session: Session) -> list[Chunk]:
         """Chunks a file content into smaller pieces. Will attempt to preserve code & sentence
@@ -41,13 +40,13 @@ class Chunker:
 
         if language is None:
             chunker: BaseChunker = SentenceChunker(
-                tokenizer_or_token_counter=self._tokenizer,
+                tokenizer_or_token_counter=count_tokens,
                 chunk_size=self._chunk_size,
                 chunk_overlap=self._chunk_overlap,
             )
         else:
             chunker = CodeChunker(
-                tokenizer_or_token_counter=self._tokenizer,
+                tokenizer_or_token_counter=count_tokens,
                 chunk_size=self._chunk_size,
                 language=language,
                 include_nodes=True,

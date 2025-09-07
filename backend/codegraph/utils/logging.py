@@ -1,9 +1,10 @@
 import logging
-import os
 import sys
 
 from colorama import Fore, Style
 from colorama import init as colorama_init
+
+from codegraph.configs.app_configs import LOG_LEVEL
 
 _LEVEL_NAME_TO_VALUE: dict[str, int] = {
     "CRITICAL": logging.CRITICAL,
@@ -41,8 +42,7 @@ def get_logger(name: str = __name__) -> logging.Logger:
     if logger.handlers:
         return logger
 
-    levelname = os.getenv("LOG_LEVEL", "").strip().upper()
-    loglevel = _LEVEL_NAME_TO_VALUE.get(levelname, logging.INFO)
+    loglevel = _LEVEL_NAME_TO_VALUE.get(LOG_LEVEL, logging.INFO)
     logger.setLevel(loglevel)
 
     formatter = ColoredLogFormatter(

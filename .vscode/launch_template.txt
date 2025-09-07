@@ -5,6 +5,7 @@
             "name": "CodeGraph (all)",
             "configurations": [
                 "CodeGraph CLI",
+                "Model Server",
                 "Celery Primary",
                 "Celery Indexing",
                 "Celery Beat",
@@ -40,6 +41,33 @@
                 "PYTHONUNBUFFERED": "1",
                 "PYTHONPATH": "."
             },
+            "presentation": {
+                "group": "2",
+            },
+        },
+        // model server
+        {
+            "name": "Model Server",
+            "consoleName": "Model Server",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "cwd": "${workspaceFolder}/backend",
+            "envFile": "${workspaceFolder}/.vscode/.env",
+            "env": {
+                "LOG_LEVEL": "DEBUG",
+                "PYTHONUNBUFFERED": "1",
+                "PYTHONPATH": "."
+            },
+            "args": [
+                "codegraph.model_service.server:app",
+                "--host",
+                "localhost",
+                "--port",
+                "9000",
+                "--workers",
+                "1"
+            ],
             "presentation": {
                 "group": "2",
             },

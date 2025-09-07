@@ -17,7 +17,7 @@ from codegraph.configs.indexing import (
     INDEXING_BATCH_SIZE,
     INDEXING_CHUNK_OVERLAP,
     INDEXING_CHUNK_SIZE,
-    MAX_INDEXING_FILE_SIZE,
+    MAX_INDEXING_FILE_SIZE_MB,
     MAX_INDEXING_WORKERS,
 )
 from codegraph.db.engine import get_session
@@ -73,7 +73,7 @@ def run_indexing(
     lock: Lock | None = None,
     *,
     directory_skip_pattern: str = DIRECTORY_SKIP_INDEXING_PATTERN,
-    max_filesize: float = MAX_INDEXING_FILE_SIZE,
+    max_filesize: float = MAX_INDEXING_FILE_SIZE_MB,
     chunk_size: int = INDEXING_CHUNK_SIZE,
     chunk_overlap: int = INDEXING_CHUNK_OVERLAP,
     batch_size: int = INDEXING_BATCH_SIZE,

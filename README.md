@@ -53,10 +53,8 @@ The project uses `LangGraph` for the agent, `Postgres` for the codegraph and oth
 
    <!-- TODO: create a script to start all celery workers -->
    ```bash
-   # start celery workers
-   python -m dotenv -f ../.vscode/.env run celery -A codegraph.celery.workers.primary worker --pool=threads --concurrency=4 --prefetch-multiplier=1 --loglevel=INFO -Q celery
-   python -m dotenv -f ../.vscode/.env run celery -A codegraph.celery.workers.indexing worker --pool=threads --concurrency=4 --prefetch-multiplier=1 --loglevel=INFO -Q indexing
-   python -m dotenv -f ../.vscode/.env run celery -A codegraph.celery.workers.beat beat --loglevel=INFO
+   python scripts/run_model_server.py
+   python scripts/run_background_workers.py
 
    # start codegraph cli
    python -m dotenv -f ../.vscode/.env run python main.py

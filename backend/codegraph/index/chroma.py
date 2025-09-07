@@ -5,7 +5,6 @@ from uuid import UUID
 from chromadb import Collection, EmbeddingFunction, HttpClient
 from chromadb.api import ClientAPI
 from chromadb.api.types import Embeddable, Embeddings, Where, WhereDocument
-from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import Session
 
 from codegraph.configs.app_configs import (
@@ -26,6 +25,7 @@ from codegraph.index.chunk_utils import (
     get_chunk_doc_metadata,
     get_doc_id,
 )
+from codegraph.model_service.client import embed_texts
 from codegraph.utils.logging import get_logger
 
 logger = get_logger()
@@ -36,13 +36,10 @@ class ChromaIndexManager:
 
     class Embedder(EmbeddingFunction[Embeddable]):
         def __init__(self) -> None:
-            self.model = ChromaIndexManager.get_embedding_model()
+            pass
 
         def __call__(self, input: Embeddable) -> Embeddings:
-            return cast(
-                Embeddings,
-                self.model.encode_document(cast(list[str], input), normalize_embeddings=True),
-            )
+            return cast(Embeddings, embed_texts(cast(list[str], input)))
 
         @staticmethod
         def name() -> str:
@@ -54,32 +51,6 @@ class ChromaIndexManager:
 
         def get_config(self) -> dict[str, Any]:
             return {}
-
-    _embedding_model: SentenceTransformer | None = None
-
-    @classmethod
-    def init_manager(cls) -> None:
-        if cls._embedding_model:
-            return
-
-        try:
-            cls._embedding_model = SentenceTransformer(
-                EMBEDDING_MODEL, trust_remote_code=True, local_files_only=True
-            )
-        except OSError:
-            cls._embedding_model = SentenceTransformer(EMBEDDING_MODEL, trust_remote_code=True)
-
-    @classmethod
-    def get_embedding_model(cls) -> SentenceTransformer:
-        if not cls._embedding_model:
-            raise ValueError("ChromaIndex not initialized. You must call init_index() first.")
-        return cls._embedding_model
-
-    @classmethod
-    def get_tokenizer(cls) -> Any:
-        if not cls._embedding_model:
-            raise ValueError("ChromaIndex not initialized. You must call init_index() first.")
-        return cls._embedding_model.tokenizer
 
     @classmethod
     def _get_collection_name(cls, project_id: int) -> str:
@@ -155,12 +126,8 @@ class ChromaIndex:
         """Queries the index by semantic similarity. Optionally filters based on metadata or
         document content.
         """
-        embedding_model = ChromaIndexManager.get_embedding_model()
-        query_embeddings = cast(
-            Embeddings, embedding_model.encode_query(query_text, normalize_embeddings=True)
-        )
         results = self.collection.query(
-            query_embeddings,
+            query_texts=[query_text],
             n_results=n_results,
             where=where,
             where_document=where_document,
