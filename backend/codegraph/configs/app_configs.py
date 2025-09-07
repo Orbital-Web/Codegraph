@@ -47,5 +47,5 @@ MODEL_SERVER_GPU_MAX_BATCH_SIZE = int(
     os.getenv("MODEL_SERVER_GPU_MAX_BATCH_SIZE", "16")
 )  # batch size to pass to GPU, tune based on GPU memory, chunk size, and model
 MODEL_SERVER_GPU_BATCH_WAIT_MS = int(
-    os.getenv("MODEL_SERVER_GPU_BATCH_WAIT_MS", "50")
+    os.getenv("MODEL_SERVER_GPU_BATCH_WAIT_MS", "10")
 )  # ms to wait after receiving first request to collect a bigger batch for higher GPU throughput

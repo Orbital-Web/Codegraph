@@ -24,6 +24,7 @@ def count_tokens(text: str) -> int:
     resp = requests.post(
         f"http://{MODEL_SERVER_HOST}:{MODEL_SERVER_PORT}/count_tokens", json=req.model_dump()
     )
+    resp.raise_for_status()
     result = CountTokensResponse(**resp.json())
     return result.token_count
 
@@ -33,6 +34,7 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     resp = requests.post(
         f"http://{MODEL_SERVER_HOST}:{MODEL_SERVER_PORT}/embed", json=req.model_dump()
     )
+    resp.raise_for_status()
     result = EmbedResponse(**resp.json())
     return result.embeddings
 
