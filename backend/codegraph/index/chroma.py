@@ -65,7 +65,7 @@ class ChromaIndexManager:
             name=collection_name,
             embedding_function=ChromaIndexManager.Embedder(),
             configuration={
-                "hnsw": {"space": "l2"},  # normalized so same as cosine
+                "hnsw": {"space": "ip"},  # normalized so same as cosine
             },
         )
         return ChromaIndex(project_id, collection)

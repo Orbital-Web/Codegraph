@@ -14,7 +14,7 @@ from codegraph.utils.logging import get_logger
 logger = get_logger()
 
 
-def get_best_device() -> Literal["cuda"] | Literal["mps"] | Literal["cpu"]:
+def get_best_device() -> Literal["cuda", "mps", "cpu"]:
     if torch.cuda.is_available():
         return "cuda"
     elif torch.backends.mps.is_available():
