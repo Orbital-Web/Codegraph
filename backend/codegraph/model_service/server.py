@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, cast
 
+import torch.nn.functional as F
 from fastapi import FastAPI, HTTPException
 
 from codegraph.configs.app_configs import (
@@ -83,7 +84,10 @@ async def embed(request: EmbedRequest) -> EmbedResponse:
         embeddings = await loop.run_in_executor(
             None,
             lambda: run_with_retry(
-                model.encode, request.texts, convert_to_tensor=True, normalize_embeddings=True
+                model.encode,
+                request.texts,
+                convert_to_tensor=True,
+                normalize_embeddings=request.normalize,
             ),
         )
         return EmbedResponse(embeddings=embeddings.tolist())
@@ -128,14 +132,17 @@ async def batch_worker() -> None:
                 batch_texts,
                 batch_size=MODEL_SERVER_GPU_MAX_BATCH_SIZE,
                 convert_to_tensor=True,
-                normalize_embeddings=True,
+                normalize_embeddings=False,
             )
 
             # split embeddings back into individual requests
             idx = 0
             for request, fut in futures:
                 n = len(request.texts)
-                fut.set_result(EmbedResponse(embeddings=embs[idx : idx + n].tolist()))
+                embeddings = embs[idx : idx + n]
+                if request.normalize:
+                    embeddings = F.normalize(embeddings, p=2, dim=1)
+                fut.set_result(EmbedResponse(embeddings=embeddings.tolist()))
                 idx += n
         except Exception as e:
             for _, fut in futures:

@@ -29,8 +29,8 @@ def count_tokens(text: str) -> int:
     return result.token_count
 
 
-def embed_texts(texts: list[str]) -> list[list[float]]:
-    req = EmbedRequest(texts=texts)
+def embed_texts(texts: list[str], normalize: bool = True) -> list[list[float]]:
+    req = EmbedRequest(texts=texts, normalize=normalize)
     resp = requests.post(
         f"http://{MODEL_SERVER_HOST}:{MODEL_SERVER_PORT}/embed", json=req.model_dump()
     )

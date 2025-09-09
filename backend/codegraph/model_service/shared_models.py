@@ -18,6 +18,7 @@ class CountTokensResponse(BaseModel):
 
 class EmbedRequest(BaseModel):
     texts: list[str]
+    normalize: bool
 
 
 class EmbedResponse(BaseModel):
