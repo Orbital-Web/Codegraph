@@ -15,7 +15,7 @@ from codegraph.configs.app_configs import (
     READINESS_INTERVAL,
     READINESS_TIMEOUT,
 )
-from codegraph.configs.indexing import EMBEDDING_MODEL, NUM_RETRIEVED_CHUNKS
+from codegraph.configs.indexing import EMBEDDING_MODEL, EMBEDDING_SPACE, NUM_RETRIEVED_CHUNKS
 from codegraph.db.models import File
 from codegraph.graph.models import Chunk, InferenceChunk
 from codegraph.index.chunk_utils import (
@@ -39,7 +39,10 @@ class ChromaIndexManager:
             pass
 
         def __call__(self, input: Embeddable) -> Embeddings:
-            return cast(Embeddings, embed_texts(cast(list[str], input)))
+            return cast(
+                Embeddings,
+                embed_texts(cast(list[str], input), normalize=EMBEDDING_SPACE == "cosine"),
+            )
 
         @staticmethod
         def name() -> str:
@@ -65,7 +68,9 @@ class ChromaIndexManager:
             name=collection_name,
             embedding_function=ChromaIndexManager.Embedder(),
             configuration={
-                "hnsw": {"space": "ip"},  # normalized so same as cosine
+                "hnsw": {
+                    "space": "l2" if EMBEDDING_SPACE == "l2" else "ip"
+                },  # if 'cosine', we normalize the embeddings instead
             },
         )
         return ChromaIndex(project_id, collection)

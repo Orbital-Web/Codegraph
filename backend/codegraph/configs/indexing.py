@@ -1,10 +1,18 @@
 import os
+from typing import cast, get_args
+
+from chromadb.api.types import Space
 
 from codegraph.graph.models import Language
 
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "jinaai/jina-embeddings-v2-base-code")
 INDEXING_CHUNK_SIZE = int(os.getenv("INDEXING_CHUNK_SIZE", "512"))
 INDEXING_CHUNK_OVERLAP = int(os.getenv("INDEXING_CHUNK_OVERLAP", "0"))
+
+_EMBEDDING_SPACE = os.getenv("EMBEDDING_SPACE", "cosine")
+if not _EMBEDDING_SPACE in get_args(Space):
+    raise EnvironmentError(f"EMBEDDING_SPACE must be one of: {get_args(Space)}")
+EMBEDDING_SPACE = cast(Space, _EMBEDDING_SPACE)
 
 NUM_RETRIEVED_CHUNKS = int(os.getenv("NUM_RETRIEVED_CHUNKS", "10"))
 
