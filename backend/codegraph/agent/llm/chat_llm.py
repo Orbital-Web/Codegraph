@@ -1,5 +1,5 @@
 # mypy: disable-error-code="attr-defined, name-defined"
-from typing import Any, Iterator, Type, cast
+from typing import Any, AsyncIterator, Iterator, Type, cast
 
 import litellm
 from litellm.utils import ChatCompletionDeltaToolCall, Delta
@@ -25,8 +25,6 @@ logger = get_logger()
 
 class LLM:
     """A class for managing LLM completion and streaming."""
-
-    # TODO: implement async version of stream and invoke
 
     def __init__(
         self,
@@ -217,6 +215,119 @@ class LLM:
         return (
             "response_format" in self.supported_params
             and litellm.utils.supports_response_schema(self.model_name)
+        )
+
+    async def ainvoke(
+        self,
+        messages: list[BaseMessage],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: ToolChoice | None = None,
+        parallel_tool_calls: bool | None = None,
+        response_schema: Type[BaseModel] | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        timeout: float | None = None,
+        max_tokens: int | None = None,
+    ) -> BaseMessage:
+        response = cast(
+            litellm.ModelResponse,
+            await self._acompletion(
+                messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                parallel_tool_calls=parallel_tool_calls,
+                response_format=response_schema,
+                reasoning_effort=reasoning_effort,
+                timeout=timeout,
+                max_tokens=max_tokens,
+                stream=False,
+            ),
+        )
+        choice = response.choices[0]
+        message = choice.message
+        return _convert_litellm_message(message)
+
+    async def astream(
+        self,
+        messages: list[BaseMessage],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: ToolChoice | None = None,
+        parallel_tool_calls: bool | None = None,
+        response_schema: Type[BaseModel] | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        timeout: float | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncIterator[BaseMessage]:
+        response = cast(
+            litellm.CustomStreamWrapper,
+            await self._acompletion(
+                messages,
+                tools=tools,
+                tool_choice=tool_choice,
+                parallel_tool_calls=parallel_tool_calls,
+                response_format=response_schema,
+                reasoning_effort=reasoning_effort,
+                timeout=timeout,
+                max_tokens=max_tokens,
+                stream=True,
+            ),
+        )
+        role: str | None = None
+        for part in response:
+            if not part.choices:
+                continue
+            choice = part.choices[0]
+            delta = choice.delta
+
+            message = _convert_litellm_delta(delta, role)
+            role = message.role.value
+            yield message
+
+    async def _acompletion(
+        self,
+        messages: list[BaseMessage],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: ToolChoice | None = None,
+        parallel_tool_calls: bool | None = None,
+        response_format: Type[BaseModel] | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        timeout: float | None = None,
+        max_tokens: int | None = None,
+        stream: bool = False,
+    ) -> litellm.ModelResponse | litellm.CustomStreamWrapper:
+        if not self.strict:
+            # if we're not enforcing, raise a warning instead
+            provided_args = {
+                name
+                for name, val in locals().items()
+                if val is not None and name not in {"self", "messages", "timeout"}
+            }
+            if unsupported_args := provided_args - self.supported_params:
+                logger.warning(
+                    f"Received unsupported arguments {unsupported_args} for model {self.model_name}"
+                )
+
+        return await litellm.acompletion(
+            model=self.model_name,
+            api_key=self.api_key,
+            api_base=self.api_base,
+            messages=[message.to_dict() for message in messages],
+            # tools
+            tools=tools,
+            tool_choice=tool_choice.value if tool_choice and tools else None,
+            parallel_tool_calls=parallel_tool_calls,
+            # structured response
+            response_format=response_format,
+            # model parameters
+            reasoning_effort=reasoning_effort.value if reasoning_effort else None,
+            # timeout and token constraints
+            timeout=timeout,
+            max_tokens=max_tokens,
+            # behavior
+            stream=stream,
+            drop_params=not self.strict,  # ignore unsupported operations if not strict
         )
 
 
