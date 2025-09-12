@@ -43,7 +43,7 @@ class ToolCall(BaseModel):
     index: int
 
     @property
-    def argument(self) -> dict[str, Any]:
+    def arguments(self) -> dict[str, Any]:
         return cast(dict[str, Any], json.loads(self.args))
 
 

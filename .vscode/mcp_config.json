@@ -1,0 +1,8 @@
+{
+    "mcpServers": {
+        "native_server": {
+            "transport": "http",
+            "url": "http://localhost:9100/mcp"
+        }
+    }
+}

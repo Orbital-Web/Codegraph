@@ -7,6 +7,7 @@ chonkie[code]==1.2.1
 chromadb==1.0.20
 colorama==0.4.6
 fastapi==0.116.1
+fastmcp==2.12.2
 isort==6.0.1
 litellm==1.76.2
 mypy==1.17.1

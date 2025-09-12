@@ -49,3 +49,8 @@ MODEL_SERVER_GPU_MAX_BATCH_SIZE = int(
 MODEL_SERVER_GPU_BATCH_WAIT_MS = int(
     os.getenv("MODEL_SERVER_GPU_BATCH_WAIT_MS", "10")
 )  # ms to wait after receiving first request to collect a bigger batch for higher GPU throughput
+
+
+### MCP Server Configs
+NATIVE_MCP_SERVER_HOST = "localhost"
+NATIVE_MCP_SERVER_PORT = 9100

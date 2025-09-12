@@ -26,6 +26,8 @@ logger = get_logger()
 class LLM:
     """A class for managing LLM completion and streaming."""
 
+    # TODO: implement async version of stream and invoke
+
     def __init__(
         self,
         model_name: str = LLM_MODEL_NAME,

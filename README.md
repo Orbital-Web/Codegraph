@@ -51,9 +51,9 @@ The project uses `LangGraph` for the agent, `Postgres` for the codegraph and oth
 
    Otherwise, if you are not using VSCode, make sure you are in `/backend` and run each of these commands in a separate terminal:
 
-   <!-- TODO: create a script to start all celery workers -->
    ```bash
    python scripts/run_model_server.py
+   python scripts/run_native_mcp_server.py
    python scripts/run_background_workers.py
 
    # start codegraph cli
@@ -62,7 +62,9 @@ The project uses `LangGraph` for the agent, `Postgres` for the codegraph and oth
 
 7. Follow the instructions in the CLI to create a new project, index it, and chat with the AI agent
 
-8. (Optional) If you plan on contributing to the codebase, you should run
+8. (Optional) Integrate your own MCP tools into CodeGraph by configuring them in `/.vscode/mcp_config.json`. View [https://gofastmcp.com/clients/client#configuration-format](https://gofastmcp.com/clients/client#configuration-format) on how to format the config to add your own MCP servers.
+
+9. (Optional) If you plan on contributing to the codebase, you should run
 
    ```bash
    pip install pre-commit
