@@ -1,6 +1,7 @@
 import json
 from enum import Enum
 from typing import Any, Literal, NotRequired, TypedDict, cast
+from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -45,6 +46,10 @@ class ToolCall(BaseModel):
     @property
     def arguments(self) -> dict[str, Any]:
         return cast(dict[str, Any], json.loads(self.args))
+
+    @classmethod
+    def build(cls, tool_name: str, tool_args: dict[str, Any]) -> "ToolCall":
+        return ToolCall(name=tool_name, args=json.dumps(tool_args), id=str(uuid4()), index=0)
 
 
 class BaseMessage(BaseModel):

@@ -15,6 +15,16 @@
             },
         },
         {
+            "name": "Servers (all)",
+            "configurations": [
+                "Model Server",
+                "MCP Server",
+            ],
+            "presentation": {
+                "group": "2",
+            },
+        },
+        {
             "name": "Celery (all)",
             "configurations": [
                 "Celery Primary",
@@ -22,7 +32,7 @@
                 "Celery Beat",
             ],
             "presentation": {
-                "group": "1",
+                "group": "2",
             },
         }
     ],
@@ -42,7 +52,7 @@
                 "PYTHONPATH": "."
             },
             "presentation": {
-                "group": "2",
+                "group": "3",
             },
         },
         // model server
@@ -57,7 +67,7 @@
             "env": {
                 "LOG_LEVEL": "DEBUG",
                 "PYTHONUNBUFFERED": "1",
-                "PYTHONPATH": "."
+                "PYTHONPATH": ".",
             },
             "args": [
                 "codegraph.model_service.server:app",
@@ -69,7 +79,25 @@
                 "1"
             ],
             "presentation": {
-                "group": "2",
+                "group": "3",
+            },
+        },
+        // mcp server
+        {
+            "name": "MCP Server",
+            "consoleName": "MCP Server",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "codegraph/tools/server.py",
+            "cwd": "${workspaceFolder}/backend",
+            "envFile": "${workspaceFolder}/.vscode/.env",
+            "env": {
+                "LOG_LEVEL": "DEBUG",
+                "PYTHONUNBUFFERED": "1",
+                "PYTHONPATH": ".",
+            },
+            "presentation": {
+                "group": "3",
             },
         },
         // celery workers
@@ -98,7 +126,7 @@
                 "celery"
             ],
             "presentation": {
-                "group": "2",
+                "group": "3",
             },
         },
         {
@@ -126,7 +154,7 @@
                 "indexing"
             ],
             "presentation": {
-                "group": "2",
+                "group": "3",
             },
         },
         // celery beat
@@ -150,7 +178,7 @@
                 "--loglevel=INFO"
             ],
             "presentation": {
-                "group": "2",
+                "group": "3",
             },
         },
         // test

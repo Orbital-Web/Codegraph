@@ -54,3 +54,5 @@ MODEL_SERVER_GPU_BATCH_WAIT_MS = int(
 ### MCP Server Configs
 NATIVE_MCP_SERVER_HOST = "localhost"
 NATIVE_MCP_SERVER_PORT = 9100
+
+NATIVE_MCP_TOOL_PREFIX = "cg"  # used to determine if a tool is native or not

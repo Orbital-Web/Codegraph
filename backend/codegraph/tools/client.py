@@ -32,9 +32,12 @@ class MCPClient:
         async with self.client:
             return await self.client.list_tools()
 
-    async def acall_tool(self, tool_call: ToolCall) -> Any:
+    async def acall_tool(self, tool_call: ToolCall, **runtime_kwargs: Any) -> Any:
+        args = tool_call.arguments.copy()
+        args.update(runtime_kwargs)
+
         async with self.client:
-            return await self.client.call_tool(tool_call.name, tool_call.arguments)
+            return await self.client.call_tool(tool_call.name, args)
 
     def list_tools(self) -> list[Tool]:
         return asyncio.run(self.alist_tools())
@@ -42,8 +45,8 @@ class MCPClient:
     def ping(self) -> bool:
         return asyncio.run(self.aping())
 
-    def call_tool(self, tool_call: ToolCall) -> Any:
-        return asyncio.run(self.acall_tool(tool_call))
+    def call_tool(self, tool_call: ToolCall, **runtime_kwargs: Any) -> Any:
+        return asyncio.run(self.acall_tool(tool_call, **runtime_kwargs))
 
 
 # TODO: call me in test cases
