@@ -8,7 +8,7 @@ from typing import Any
 from fastmcp import Client
 from mcp.types import Tool
 
-from codegraph.agent.llm.models import ToolCall
+from codegraph.agent.llm.models import ToolCall, ToolResponse
 from codegraph.configs.app_configs import READINESS_INTERVAL, READINESS_TIMEOUT
 from codegraph.utils.logging import get_logger
 
@@ -32,12 +32,13 @@ class MCPClient:
         async with self.client:
             return await self.client.list_tools()
 
-    async def acall_tool(self, tool_call: ToolCall, **runtime_kwargs: Any) -> Any:
+    async def acall_tool(self, tool_call: ToolCall, **runtime_kwargs: Any) -> ToolResponse:
         args = tool_call.arguments.copy()
         args.update(runtime_kwargs)
 
         async with self.client:
-            return await self.client.call_tool(tool_call.name, args)
+            response = await self.client.call_tool(tool_call.name, args)
+            return ToolResponse(id=tool_call.id, data=response.data)
 
     def list_tools(self) -> list[Tool]:
         return asyncio.run(self.alist_tools())
@@ -45,7 +46,7 @@ class MCPClient:
     def ping(self) -> bool:
         return asyncio.run(self.aping())
 
-    def call_tool(self, tool_call: ToolCall, **runtime_kwargs: Any) -> Any:
+    def call_tool(self, tool_call: ToolCall, **runtime_kwargs: Any) -> ToolResponse:
         return asyncio.run(self.acall_tool(tool_call, **runtime_kwargs))
 
 

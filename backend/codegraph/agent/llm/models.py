@@ -1,15 +1,16 @@
 import json
 from enum import Enum
-from typing import Any, Literal, NotRequired, TypedDict, cast
+from typing import Any, Literal, cast
 from uuid import uuid4
 
 from pydantic import BaseModel
+from typing_extensions import TypedDict
 
 
-class LLMValidationInfo(TypedDict):
-    model_name_suggestions: NotRequired[list[str]]
-    missing_keys: NotRequired[list[str]]
-    invalid_key: NotRequired[bool]
+class LLMValidationInfo(TypedDict, total=False):
+    model_name_suggestions: list[str]
+    missing_keys: list[str]
+    invalid_key: bool
 
 
 class LLMException(Exception):
@@ -50,6 +51,21 @@ class ToolCall(BaseModel):
     @classmethod
     def build(cls, tool_name: str, tool_args: dict[str, Any]) -> "ToolCall":
         return ToolCall(name=tool_name, args=json.dumps(tool_args), id=str(uuid4()), index=0)
+
+    def finalize(self) -> "ToolCall":
+        """Validates the tool call and sets `id` if unset, as some models may return empty strings
+        for the fields.
+        """
+        if not self.name:
+            raise ValueError("Name cannot be empty")
+        if not self.id:
+            self.id = str(uuid4())
+        return self
+
+
+class ToolResponse(BaseModel):
+    id: str
+    data: Any
 
 
 class BaseMessage(BaseModel):
