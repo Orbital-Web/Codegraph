@@ -1,1 +1,25 @@
-# TODO:
+### LLM
+# examples: https://docs.litellm.ai/#litellm-python-sdk, make sure to define the other required env vars here
+LLM_MODEL_NAME="MODEL_NAME"
+LLM_API_KEY="YOUR_API_TOKEN"
+LLM_API_BASE=""
+
+
+### Indexing
+# find models on https://huggingface.co/models?library=sentence-transformers, space is either cosine, ip, or l2
+# if you decide to change the model or space midway, make sure to reindex everything manually
+EMBEDDING_MODEL="jinaai/jina-embeddings-v2-base-code"
+EMBEDDING_SPACE="cosine"
+
+# use this to skip unwanted directories and files (e.g., you may want to skip test files)
+MAX_INDEXING_FILE_SIZE_MB="10"
+DIRECTORY_SKIP_INDEXING_PATTERN="^\..*|^__[A-Za-z]*__$|^node_modules$"
+
+INDEXING_CHUNK_SIZE="512"
+
+
+### Performance-related
+# these only matter if you embed on the GPU (find out more in codegraph.configs.app_configs)
+MODEL_SERVER_ALLOW_USE_GPU="true"
+MODEL_SERVER_GPU_MAX_BATCH_SIZE="16"
+MODEL_SERVER_GPU_BATCH_WAIT_MS="10"

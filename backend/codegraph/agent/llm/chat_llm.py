@@ -24,7 +24,7 @@ logger = get_logger()
 
 
 class LLM:
-    """A class for managing LLM completion and streaming."""
+    """A thread-safe class for managing LLM completion and streaming."""
 
     def __init__(
         self,

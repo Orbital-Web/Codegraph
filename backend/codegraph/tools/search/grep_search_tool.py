@@ -45,7 +45,7 @@ async def grep_file(
     # runtime arguments
     project_id: int = -1,
 ) -> list[str]:
-    """Search for a `pattern` in one or more files."""
+    """Search for a keyword or regular expression match in one or more files within the codebase."""
     if project_id == -1:
         raise ToolHiddenArgError("`project_path` not set correctly.")
 
@@ -141,7 +141,9 @@ async def grep_dir(
     # runtime arguments
     project_id: int = -1,
 ) -> list[str]:
-    """Search recursively for a `pattern` in one or more directories"""
+    """Search recursively for a keyword or regular expression match in one or more directories
+    within the codebase.
+    """
     if project_id == -1:
         raise ToolHiddenArgError("`project_path` not set correctly.")
 
