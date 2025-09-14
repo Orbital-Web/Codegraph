@@ -274,7 +274,7 @@ class LLM:
             ),
         )
         role: str | None = None
-        for part in response:
+        async for part in response:
             if not part.choices:
                 continue
             choice = part.choices[0]

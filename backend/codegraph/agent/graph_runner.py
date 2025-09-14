@@ -1,22 +1,19 @@
-import asyncio
-from typing import cast
+from typing import Any, AsyncIterator, cast
 
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.typing import ContextT, InputT, OutputT, StateT
 
+from codegraph.agent.models import ALL_STREAM_EVENTS, StreamEvent
 
-async def arun_graph(
+
+async def astream_graph(
     graph: CompiledStateGraph[StateT, ContextT, InputT, OutputT],
     input_state: InputT,
     config: RunnableConfig | None = None,
-) -> OutputT:
-    return cast(OutputT, await graph.ainvoke(input_state, config=config))
-
-
-def run_graph(
-    graph: CompiledStateGraph[StateT, ContextT, InputT, OutputT],
-    input_state: InputT,
-    config: RunnableConfig | None = None,
-) -> OutputT:
-    return asyncio.run(arun_graph(graph, input_state, config))
+) -> AsyncIterator[tuple[StreamEvent, Any]]:
+    """Runs the graph and streams events."""
+    async for event in graph.astream_events(input_state, config, include_names=ALL_STREAM_EVENTS):
+        event_name = cast(StreamEvent, event["name"])
+        event_data = event["data"]
+        yield event_name, event_data

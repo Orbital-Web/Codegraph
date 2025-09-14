@@ -4,6 +4,10 @@ from codegraph.agent.deep_research.states import AgentState, AgentStep
 
 
 async def choose_tools(state: AgentState) -> AgentState:
+    """A node which decides which tools to use."""
+    state["llm"]
+    state["tools"]
+
     # TODO: call tool_call.finalize() for the generated tool calls
     return {}
 

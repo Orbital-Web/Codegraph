@@ -52,5 +52,4 @@ class AgentState(TypedDict, total=False):
 
 
 class AgentOutput(TypedDict):
-    # TODO: add response text + generated code, then write a cli func to print this nicely
     pass
