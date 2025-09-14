@@ -141,9 +141,7 @@ async def grep_dir(
     # runtime arguments
     project_id: int = -1,
 ) -> list[str]:
-    """Search recursively for a keyword or regular expression match in one or more directories
-    within the codebase.
-    """
+    """Search recursively for a keyword or regular expression match in one or more directories within the codebase."""
     if project_id == -1:
         raise ToolHiddenArgError("`project_path` not set correctly.")
 

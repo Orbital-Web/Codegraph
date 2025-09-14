@@ -19,7 +19,7 @@ async def analyze_intent(state: AgentState) -> AgentState:
 
     llm = state["llm"]
     client = MCPClient()
-    tools = await client.alist_tools()
+    tools = await client.alist_openai_tools()
     tool_summaries = summarize_tools(tools)
 
     intent_analysis_prompt = INTENT_ANALYSIS_PROMPT.build(
@@ -41,9 +41,15 @@ async def analyze_intent(state: AgentState) -> AgentState:
             "tools": tools,
             "complete": True,
             "completion_reason": analysis_result[len(ANALYSIS_EXIT_KEYWORD) :].strip(),
+            "current_iteration": 1,
         }
 
-    return {"complete": False, "tools": tools, "analysis_result": analysis_result}
+    return {
+        "complete": False,
+        "tools": tools,
+        "analysis_result": analysis_result,
+        "current_iteration": 1,
+    }
 
 
 async def continue_or_exit(state: AgentState) -> AgentStep:

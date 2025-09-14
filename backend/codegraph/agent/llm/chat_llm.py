@@ -1,8 +1,9 @@
 # mypy: disable-error-code="attr-defined, name-defined"
-from typing import Any, AsyncIterator, Iterator, Type, cast
+from typing import AsyncIterator, Iterator, Type, cast
 
 import litellm
 from litellm.utils import ChatCompletionDeltaToolCall, Delta
+from openai.types.chat import ChatCompletionToolParam
 from pydantic import BaseModel
 from rapidfuzz import fuzz, process
 
@@ -96,7 +97,7 @@ class LLM:
         self,
         messages: list[BaseMessage],
         *,
-        tools: list[dict[str, Any]] | None = None,
+        tools: list[ChatCompletionToolParam] | None = None,
         tool_choice: ToolChoice | None = None,
         parallel_tool_calls: bool | None = None,
         response_schema: Type[BaseModel] | None = None,
@@ -126,7 +127,7 @@ class LLM:
         self,
         messages: list[BaseMessage],
         *,
-        tools: list[dict[str, Any]] | None = None,
+        tools: list[ChatCompletionToolParam] | None = None,
         tool_choice: ToolChoice | None = None,
         parallel_tool_calls: bool | None = None,
         response_schema: Type[BaseModel] | None = None,
@@ -163,7 +164,7 @@ class LLM:
         self,
         messages: list[BaseMessage],
         *,
-        tools: list[dict[str, Any]] | None = None,
+        tools: list[ChatCompletionToolParam] | None = None,
         tool_choice: ToolChoice | None = None,
         parallel_tool_calls: bool | None = None,
         response_format: Type[BaseModel] | None = None,
@@ -184,6 +185,9 @@ class LLM:
                     f"Received unsupported arguments {unsupported_args} for model {self.model_name}"
                 )
 
+        logger.debug(
+            f"Running completion with prompts:\n{'\n---\n'.join(msg.content for msg in messages)}"
+        )
         return litellm.completion(
             model=self.model_name,
             api_key=self.api_key,
@@ -221,7 +225,7 @@ class LLM:
         self,
         messages: list[BaseMessage],
         *,
-        tools: list[dict[str, Any]] | None = None,
+        tools: list[ChatCompletionToolParam] | None = None,
         tool_choice: ToolChoice | None = None,
         parallel_tool_calls: bool | None = None,
         response_schema: Type[BaseModel] | None = None,
@@ -251,7 +255,7 @@ class LLM:
         self,
         messages: list[BaseMessage],
         *,
-        tools: list[dict[str, Any]] | None = None,
+        tools: list[ChatCompletionToolParam] | None = None,
         tool_choice: ToolChoice | None = None,
         parallel_tool_calls: bool | None = None,
         response_schema: Type[BaseModel] | None = None,
@@ -288,7 +292,7 @@ class LLM:
         self,
         messages: list[BaseMessage],
         *,
-        tools: list[dict[str, Any]] | None = None,
+        tools: list[ChatCompletionToolParam] | None = None,
         tool_choice: ToolChoice | None = None,
         parallel_tool_calls: bool | None = None,
         response_format: Type[BaseModel] | None = None,
@@ -309,6 +313,9 @@ class LLM:
                     f"Received unsupported arguments {unsupported_args} for model {self.model_name}"
                 )
 
+        logger.debug(
+            f"Running completion with prompts:\n{'\n---\n'.join(msg.content for msg in messages)}"
+        )
         return await litellm.acompletion(
             model=self.model_name,
             api_key=self.api_key,

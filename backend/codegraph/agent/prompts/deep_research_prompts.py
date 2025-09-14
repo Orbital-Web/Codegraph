@@ -25,6 +25,85 @@ description of what it does:
 ---tool_summaries---
 
 Finally, here is the user prompt:
+---user_prompt---\
+"""
+)
+
+
+PARALLEL_TOOL_CLAUSE = """
+You are allowed and encouraged to call multiple tools in parallel to maximize efficiency. \
+Consider which steps you can run already in parallel, including the steps that you may not need \
+yet but are likely to be useful.\
+"""
+
+CONTINUATION_CLAUSE = PromptTemplate(
+    """
+Here are the steps you've taken, and your continuation reason from the previous step:
+---previous_steps_summary---
+
+Continuation Reason: ---continuation_reason---\
+"""
+)
+
+CHOOSE_TOOL_PROMPT = PromptTemplate(
+    """\
+You are a helpful coding assistant that must call the various tools to accomplish the user prompt. \
+---parallel_tool_clause---
+
+Note that you do not need to fully address the user prompt in one step.
+Consider the information you currently have and call the relevant tools to accomplish your goals \
+as quickly as possible.
+You are currently on step ---current_iteration--- and MUST finish within ---remaining_iteration---.
+
+The user prompt is:
 ---user_prompt---
+
+Here is your previous reasoning on the user intent and your high level plan:
+---analysis_result---
+---continuation_clause---\
+"""
+)
+
+CHOOSE_TOOL_NO_TC_PROMPT = PromptTemplate(
+    """\
+You are a helpful coding assistant that must decide which tool to call to accomplish the user \
+prompt.
+
+Note that you do not need to fully address the user prompt in one step.
+Consider the information you currently have and call the relevant tools to accomplish your goals \
+as quickly as possible.
+You are currently on step ---current_iteration--- and MUST finish within ---remaining_iteration---.
+
+The user prompt is:
+---user_prompt---
+
+Here is your previous reasoning on the user intent and your high level plan:
+---analysis_result---
+---continuation_clause---
+
+Here are the list of available tools. Note that not every tool might have a comprehensive \
+description of what it does:
+---tool_specs---
+
+You MUST respond with a json dictionary with the following format. Do not include backticks or \
+any other responce other than the json schema:
+{
+    "name": <string, name of tool to call>,
+    "args": <string, stringified json of the argument to pass to tool, making sure to follow the \
+parameter specification of that tool and escaping special characters>
+}
+---previous_attempt_clause---\
+"""
+)
+
+CHOOSE_TOOL_PREVIOUS_ATTEMPT_CLAUSE = PromptTemplate(
+    """
+Your previous output was:
+---previous_output---
+
+Which caused the error:
+---previous_error---
+
+Please try again:\
 """
 )

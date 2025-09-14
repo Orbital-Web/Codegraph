@@ -6,7 +6,9 @@ from time import monotonic, sleep
 from typing import Any
 
 from fastmcp import Client
+from litellm.experimental_mcp_client.tools import transform_mcp_tool_to_openai_tool
 from mcp.types import Tool
+from openai.types.chat import ChatCompletionToolParam
 
 from codegraph.agent.llm.models import ToolCall, ToolResponse
 from codegraph.configs.app_configs import READINESS_INTERVAL, READINESS_TIMEOUT
@@ -32,6 +34,10 @@ class MCPClient:
         async with self.client:
             return await self.client.list_tools()
 
+    async def alist_openai_tools(self) -> list[ChatCompletionToolParam]:
+        mcp_tools = await self.alist_tools()
+        return [transform_mcp_tool_to_openai_tool(mcp_tool=tool) for tool in mcp_tools]
+
     async def acall_tool(self, tool_call: ToolCall, **runtime_kwargs: Any) -> ToolResponse:
         args = tool_call.arguments.copy()
         args.update(runtime_kwargs)
@@ -42,6 +48,9 @@ class MCPClient:
 
     def list_tools(self) -> list[Tool]:
         return asyncio.run(self.alist_tools())
+
+    def list_openai_tools(self) -> list[ChatCompletionToolParam]:
+        return asyncio.run(self.alist_openai_tools())
 
     def ping(self) -> bool:
         return asyncio.run(self.aping())

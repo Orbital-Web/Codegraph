@@ -3,7 +3,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Annotated
 
-from mcp.types import Tool
+from openai.types.chat import ChatCompletionToolParam
 from typing_extensions import TypedDict
 
 from codegraph.agent.llm.chat_llm import LLM
@@ -25,6 +25,7 @@ class AgentInput(TypedDict):
     project_id: int
     user_prompt: str
     llm: LLM
+    max_iteration: int
 
 
 class AgentState(TypedDict, total=False):
@@ -32,14 +33,14 @@ class AgentState(TypedDict, total=False):
     project_id: int
     user_prompt: str
     llm: LLM
+    max_iteration: int
 
     # analyze_intent
-    tools: list[Tool]
+    tools: list[ChatCompletionToolParam]
     analysis_result: str
 
     # choose_tool
     current_iteration: int
-    current_plan: str
     tool_calls: list[ToolCall]
     # call_tool
     current_tool: ToolCall
@@ -49,6 +50,7 @@ class AgentState(TypedDict, total=False):
     iteration_summaries: Annotated[list[str], operator.add]
     complete: bool
     completion_reason: str
+    continuation_reason: str
 
 
 class AgentOutput(TypedDict):

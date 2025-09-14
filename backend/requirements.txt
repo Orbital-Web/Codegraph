@@ -9,6 +9,7 @@ colorama==0.4.6
 fastapi==0.116.1
 fastmcp==2.12.2
 isort==6.0.1
+jsonschema==4.25.1
 langgraph==0.6.7
 litellm==1.76.2
 mypy==1.17.1
@@ -24,4 +25,5 @@ SQLAlchemy[mypy]==2.0.43
 torch==2.8.0
 transformers==4.55.4
 types-colorama==0.4.15.20250801
+types-jsonschema==4.25.1.20250822
 types-requests==2.32.4.20250809

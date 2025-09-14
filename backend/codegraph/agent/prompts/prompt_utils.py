@@ -1,6 +1,7 @@
+import json
 import re
 
-from mcp.types import Tool
+from openai.types.chat import ChatCompletionToolParam
 
 
 class PromptTemplate:
@@ -45,5 +46,11 @@ class PromptTemplate:
         return self._pattern.sub(repl, self._template)
 
 
-def summarize_tools(tools: list[Tool]) -> str:
-    return "\n".join(f"- {tool.name}: {tool.description}" for tool in tools)
+def summarize_tools(tools: list[ChatCompletionToolParam]) -> str:
+    return "\n".join(
+        f"- {tool['function']['name']}: {tool['function']['description']}" for tool in tools
+    )
+
+
+def format_tools(tools: list[ChatCompletionToolParam]) -> str:
+    return "\n".join(json.dumps(tool["function"], indent=4) for tool in tools)
