@@ -10,6 +10,7 @@ fastapi==0.116.1
 fastmcp==2.12.2
 isort==6.0.1
 jsonschema==4.25.1
+json-schema-to-pydantic==0.4.1
 langgraph==0.6.7
 litellm==1.76.2
 mypy==1.17.1

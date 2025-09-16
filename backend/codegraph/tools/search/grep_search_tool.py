@@ -8,12 +8,24 @@ from fastmcp.exceptions import ToolError
 
 from codegraph.db.engine import get_session
 from codegraph.db.models import Project
-from codegraph.tools.shared_models import ToolHiddenArgError
+from codegraph.tools.shared_models import InternalToolCallError
 from codegraph.utils.logging import get_logger
 
 logger = get_logger()
 
 app = FastMCP(__name__)
+
+
+def _resolve_paths(paths: list[str], base_path: Path) -> list[str]:
+    resolved: list[str] = []
+    for p in paths:
+        path = Path(p)
+        if path.is_absolute():
+            resolved.append(path.resolve(strict=True).as_posix())
+        else:
+            resolved.append((base_path / path).resolve(strict=True).as_posix())
+
+    return resolved
 
 
 @app.tool(exclude_args=["project_id"])
@@ -47,13 +59,16 @@ async def grep_file(
 ) -> list[str]:
     """Search for a keyword or regular expression match in one or more files within the codebase."""
     if project_id == -1:
-        raise ToolHiddenArgError("`project_path` not set correctly.")
+        raise InternalToolCallError("`project_id` not set correctly.")
 
     # get project root
     with get_session() as session:
-        project_root = Path(
+        project_root_str = (
             session.query(Project.root_path).filter(Project.id == project_id).scalar()
         )
+        if project_root_str is None:
+            raise InternalToolCallError("Project with given `project_id` doesn't exist.")
+        project_root = Path(project_root_str)
 
     # build args
     args = [
@@ -70,7 +85,7 @@ async def grep_file(
         if arg is not None
     ]
     args.append(pattern)
-    args.extend([path] if isinstance(path, str) else path)
+    args.extend(_resolve_paths([path] if isinstance(path, str) else path, project_root))
 
     proc = await asyncio.create_subprocess_exec(
         "grep",
@@ -104,7 +119,8 @@ async def grep_dir(
         str | list[str],
         (
             "Dirpath(s) to search for. These should be directories, not files, and should be "
-            "relative to the project root directory or absolute."
+            "relative to the project root directory or absolute. In general, use `path='.'` to "
+            "search within the whole codebase."
         ),
     ],
     use_regex: Annotated[
@@ -143,13 +159,16 @@ async def grep_dir(
 ) -> list[str]:
     """Search recursively for a keyword or regular expression match in one or more directories within the codebase."""
     if project_id == -1:
-        raise ToolHiddenArgError("`project_path` not set correctly.")
+        raise InternalToolCallError("`project_id` not set correctly.")
 
     # get project root
     with get_session() as session:
-        project_root = Path(
+        project_root_str = (
             session.query(Project.root_path).filter(Project.id == project_id).scalar()
         )
+        if project_root_str is None:
+            raise InternalToolCallError("Project with given `project_id` doesn't exist.")
+        project_root = Path(project_root_str)
 
     # build args
     args = [
@@ -176,7 +195,7 @@ async def grep_dir(
         for i in exclude if isinstance(exclude, list) else [exclude]:
             args.append(f"--exclude='{i}'")
     args.append(pattern)
-    args.extend([path] if isinstance(path, str) else path)
+    args.extend(_resolve_paths([path] if isinstance(path, str) else path, project_root))
 
     proc = await asyncio.create_subprocess_exec(
         "grep",

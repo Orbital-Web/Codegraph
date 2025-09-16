@@ -54,3 +54,7 @@ def summarize_tools(tools: list[ChatCompletionToolParam]) -> str:
 
 def format_tools(tools: list[ChatCompletionToolParam]) -> str:
     return "\n".join(json.dumps(tool["function"], indent=4) for tool in tools)
+
+
+def format_tool(tool: ChatCompletionToolParam) -> str:
+    return json.dumps(tool["function"]["parameters"], indent=4)

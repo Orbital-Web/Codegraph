@@ -66,6 +66,7 @@ class ToolCall(BaseModel):
 class ToolResponse(BaseModel):
     id: str
     data: Any
+    success: bool = True
 
 
 class BaseMessage(BaseModel):

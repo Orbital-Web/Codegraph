@@ -6,11 +6,12 @@ from langchain_core.callbacks.manager import adispatch_custom_event
 from langgraph.types import Send
 from openai.types.chat import ChatCompletionToolParam
 
+from codegraph.agent.deep_research.models import ToolCallFormat
 from codegraph.agent.deep_research.states import AgentState, AgentStep
 from codegraph.agent.llm.chat_llm import LLM
 from codegraph.agent.llm.models import SystemMessage, ToolCall, ToolChoice
 from codegraph.agent.llm.utils import ainvoke_llm_json
-from codegraph.agent.models import StreamEvent, ToolCallFormat
+from codegraph.agent.models import StreamEvent
 from codegraph.agent.prompts.deep_research_prompts import (
     CHOOSE_TOOL_NO_TC_PROMPT,
     CHOOSE_TOOL_PREVIOUS_ATTEMPT_CLAUSE,
@@ -134,9 +135,11 @@ async def choose_tools(state: AgentState) -> AgentState:
 async def continue_to_tool_call(state: AgentState) -> Send | list[Send]:
     if not state["tool_calls"]:
         return Send(
-            AgentStep.RESPOND, {"complete": True, "completion_reason": "no tools were called"}
+            AgentStep.RESPOND,
+            {**state, "complete": True, "completion_reason": "no tools were called"},
         )
 
     return [
-        Send(AgentStep.CALL_TOOL, {"current_tool": tool_call}) for tool_call in state["tool_calls"]
+        Send(AgentStep.CALL_TOOL, {**state, "current_tool": tool_call})
+        for tool_call in state["tool_calls"]
     ]

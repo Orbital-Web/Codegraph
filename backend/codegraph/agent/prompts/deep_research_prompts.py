@@ -84,15 +84,15 @@ Here is your previous reasoning on the user intent and your high level plan:
 Here are the list of available tools. Note that not every tool might have a comprehensive \
 description of what it does:
 ---tool_specs---
+---previous_attempt_clause---
 
 You MUST respond with a json dictionary with the following format. Do not include backticks or \
-any other responce other than the json schema:
+any other response other than the json object:
 {
     "name": <string, name of tool to call>,
     "args": <string, stringified json of the argument to pass to tool, making sure to follow the \
 parameter specification of that tool and escaping special characters>
-}
----previous_attempt_clause---\
+}\
 """
 )
 
@@ -104,6 +104,43 @@ Your previous output was:
 Which caused the error:
 ---previous_error---
 
-Please try again:\
+Please try again.\
+"""
+)
+
+
+CALL_TOOL_ON_FAIL_PROMPT = PromptTemplate(
+    """\
+You are a helpful assistant that must fix the errors with the tool arguments and call the tool \
+again.
+
+You previously called the ---tool_name--- tool with the arguments:
+---previous_tool_args---
+
+However, the tool caused the following exception:
+---previous_error---
+
+Call the tool again, addressing the issues with the arguments while inferring what the original \
+tool call meant to do.
+"""
+)
+
+CALL_TOOL_ON_FAIL_NO_TC_PROMPT = PromptTemplate(
+    """\
+You are a helpful assistant that must fix the errors with the tool arguments and call the tool \
+again.
+
+You previously called the ---tool_name--- tool with the arguments:
+---previous_tool_args---
+
+However, the tool caused the following exception:
+---previous_error---
+
+Call the tool again, addressing the issues with the arguments while inferring what the original \
+tool call meant to do.
+
+You MUST respond with a json dictionary with the following format. Do not include backticks or \
+any other response other than the json object:
+---tool_spec---
 """
 )
