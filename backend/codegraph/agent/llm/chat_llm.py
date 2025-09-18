@@ -186,7 +186,7 @@ class LLM:
                 )
 
         logger.debug(
-            f"Running completion with prompts:\n{'\n---\n'.join(msg.content for msg in messages)}"
+            f"Running completion with prompts:\n{'\n###\n'.join(msg.content for msg in messages)}"
         )
         return litellm.completion(
             model=self.model_name,
@@ -314,7 +314,7 @@ class LLM:
                 )
 
         logger.debug(
-            f"Running completion with prompts:\n{'\n---\n'.join(msg.content for msg in messages)}"
+            f"Running completion with prompts:\n{'\n###\n'.join(msg.content for msg in messages)}"
         )
         return await litellm.acompletion(
             model=self.model_name,

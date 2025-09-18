@@ -1,72 +1,70 @@
 from codegraph.agent.prompts.prompt_utils import PromptTemplate
 
+AGENT_SYSTEM_PROMPT = """\
+You are a careful and efficient coding assistant.
+- Primary goal: given a user's question or request, analyze their intent and address their prompt \
+fully and efficiently using the tools you have.
+- Grounding: base responses only on (a) the user's request, (b) verified context (e.g., codebase, \
+prior conversation), or (c) tool outputs. If critical evidence is missing, clearly state the gap \
+rather than speculating.
+- Efficiency: aim to resolve the user's request in as few iterations as possible. When using
+tools, anticipate all the information you will need and gather it in one step, rather than \
+deferring to later steps. Do not attempt work unrelated to the user's request.
+Completeness: although efficiency is key, strive to fully answer the user's request.\
+"""
+
+
 ANALYSIS_EXIT_KEYWORD = "[END]"
 
 INTENT_ANALYSIS_PROMPT = PromptTemplate(
     f"""\
-You are a helpful coding assistant that must extract the user's intent and produce a concise, high \
-level plan for accomplishing it using the various tools made available to you.
-You should format your response as:
-'''
+Here is the user's prompt:
+---
+---user_prompt---
+---
+
+Your task:
+Analyze the user's intent from the prompt above and produce a concise, high level plan for \
+accomplishing it using the following tools. The prompt may be a question, or a request:
+---tool_summaries---
+
+Respond in the format:
+---
 The user is looking to ... (1-3 sentences)
-To do this, I should ... (list out the steps and purposes. Keep each step concise)
+To do this, I should ... (write a concise, high level action plan)
 Ultimately, my goal is to ... (1-line desired end-state/success criteria)
-'''
+---
 
 You should assume that any information that isn't clear from the user prompt will be available \
 through the various tools.
-In the off case that the question is truly unanswerable, either because the user prompt appears to \
-be incomplete (accidentally sent mid-way) or requires tools you definitely do not have access to, \
-you should immediately respond with '{ANALYSIS_EXIT_KEYWORD}', followed by a 1-liner explaining \
-why. Do not respond in any other format in this case.
-
-Here are the list of tools you have access to. Note that not every tool might have a comprehensive \
-description of what it does:
----tool_summaries---
-
-Finally, here is the user prompt:
----user_prompt---\
+In the off case that the request is truly not addressable, either because the user prompt appears \
+to be incomplete (accidentally sent mid-way) or requires tools you definitely do not have access \
+to, you should immediately respond with '{ANALYSIS_EXIT_KEYWORD}', followed by a 1-liner \
+explaining why. Do not respond in any other format in this case.\
 """
 )
 
-
-PARALLEL_TOOL_CLAUSE = """
-You are allowed and encouraged to call multiple tools in parallel to maximize efficiency. \
-Consider which steps you can run already in parallel, including the steps that you may not need \
-yet but are likely to be useful.\
-"""
-
-CONTINUATION_CLAUSE = PromptTemplate(
-    """
-Here are the steps you've taken, and your continuation reason from the previous step:
----previous_steps_summary---
-
-Continuation Reason: ---continuation_reason---\
-"""
-)
 
 CHOOSE_TOOL_PROMPT = PromptTemplate(
     """\
-You are a helpful coding assistant that must call the various tools to accomplish the user prompt. \
----parallel_tool_clause---
+Your task:
+Given the user prompt, the analysis of the user prompt, and the results from your previous \
+iterations (if any), you must decide which tools to call next in order to address the user's \
+prompt. \
+---parallel_tool_clause---\
 
 Note that you do not need to fully address the user prompt in one step.
 Consider the information you currently have and call the relevant tools to accomplish your goals \
 as quickly as possible.
-You are currently on step ---current_iteration--- and MUST finish within ---remaining_iteration---.
-
-The user prompt is:
----user_prompt---
-
-Here is your previous reasoning on the user intent and your high level plan:
----analysis_result---
----continuation_clause---\
+You are currently on step ---current_iteration--- and MUST finish within ---remaining_iteration---.\
 """
 )
 
 CHOOSE_TOOL_NO_TC_PROMPT = PromptTemplate(
     """\
-You are a helpful coding assistant that must decide which tool to call to accomplish the user \
+Your task:
+Given the user prompt, the analysis of the user prompt, and the results from your previous \
+iterations (if any), you must decide which tool to call next in order to address the user's \
 prompt.
 
 Note that you do not need to fully address the user prompt in one step.
@@ -74,17 +72,9 @@ Consider the information you currently have and call the relevant tools to accom
 as quickly as possible.
 You are currently on step ---current_iteration--- and MUST finish within ---remaining_iteration---.
 
-The user prompt is:
----user_prompt---
-
-Here is your previous reasoning on the user intent and your high level plan:
----analysis_result---
----continuation_clause---
-
-Here are the list of available tools. Note that not every tool might have a comprehensive \
-description of what it does:
+Here are the list of available tools and their input argument specification:
 ---tool_specs---
----previous_attempt_clause---
+---previous_attempt_clause---\
 
 You MUST respond with a json dictionary with the following format. Do not include backticks or \
 any other response other than the json object:
@@ -95,6 +85,12 @@ parameter specification of that tool and escaping special characters>
 }\
 """
 )
+
+PARALLEL_TOOL_CLAUSE = """
+You are allowed and encouraged to call multiple tools in parallel to maximize efficiency. \
+Consider which steps you can run already in parallel, including the steps that you may not need \
+yet but are likely to be useful.\
+"""
 
 CHOOSE_TOOL_PREVIOUS_ATTEMPT_CLAUSE = PromptTemplate(
     """
@@ -121,7 +117,7 @@ However, the tool caused the following exception:
 ---previous_error---
 
 Call the tool again, addressing the issues with the arguments while inferring what the original \
-tool call meant to do.
+tool call meant to do.\
 """
 )
 
@@ -141,6 +137,6 @@ tool call meant to do.
 
 You MUST respond with a json dictionary with the following format. Do not include backticks or \
 any other response other than the json object:
----tool_spec---
+---tool_spec---\
 """
 )

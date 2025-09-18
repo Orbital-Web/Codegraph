@@ -6,8 +6,9 @@ from typing import Annotated
 from openai.types.chat import ChatCompletionToolParam
 from typing_extensions import TypedDict
 
+from codegraph.agent.deep_research.models import IterationToolResponse
 from codegraph.agent.llm.chat_llm import LLM
-from codegraph.agent.llm.models import ToolCall, ToolResponse
+from codegraph.agent.llm.models import BaseMessage, ToolCall
 
 
 class AgentStep(str, Enum):
@@ -37,20 +38,18 @@ class AgentState(TypedDict, total=False):
 
     # analyze_intent
     tools: list[ChatCompletionToolParam]
-    analysis_result: str
+    history: list[BaseMessage]
 
     # choose_tool
     current_iteration: int
     tool_calls: list[ToolCall]
     # call_tool
     current_tool: ToolCall
-    tool_results: Annotated[list[ToolResponse], operator.add]
+    tool_results: Annotated[list[IterationToolResponse], operator.add]
     generated_codes: Annotated[list[tuple[Path, str]], operator.add]  # TODO: fill in call_tool
     # plan_next
     iteration_summaries: Annotated[list[str], operator.add]
     complete: bool
-    completion_reason: str
-    continuation_reason: str
 
 
 class AgentOutput(TypedDict):

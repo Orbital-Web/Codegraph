@@ -4,9 +4,10 @@ from json_schema_to_pydantic import create_model  # type: ignore
 from langchain_core.callbacks.manager import adispatch_custom_event
 from openai.types.chat import ChatCompletionToolParam
 
+from codegraph.agent.deep_research.models import IterationToolResponse
 from codegraph.agent.deep_research.states import AgentState
 from codegraph.agent.llm.chat_llm import LLM
-from codegraph.agent.llm.models import SystemMessage, ToolCall, ToolChoice, ToolResponse
+from codegraph.agent.llm.models import ToolCall, ToolChoice, ToolResponse, UserMessage
 from codegraph.agent.llm.utils import ainvoke_llm_json
 from codegraph.agent.models import StreamEvent
 from codegraph.agent.prompts.deep_research_prompts import (
@@ -29,6 +30,7 @@ async def _fix_tool_call(
     previous_tool_args: str,
     previous_error: str,
 ) -> ToolCall:
+    # TODO: revisit, maybe use history and/or system prompt
     use_tool_call = llm.supports_tool_calling()
 
     if use_tool_call:
@@ -36,7 +38,7 @@ async def _fix_tool_call(
             previous_tool_args=previous_tool_args, previous_error=previous_error
         )
         response = await llm.ainvoke(
-            [SystemMessage(content=fix_tool_call_prompt)],
+            [UserMessage(content=fix_tool_call_prompt)],
             tools=[tool],
             tool_choice=ToolChoice.REQUIRED,
             parallel_tool_calls=False,
@@ -57,7 +59,7 @@ async def _fix_tool_call(
     )
     tool_schema = create_model(tool["function"]["parameters"])
     tool_call_args = await ainvoke_llm_json(
-        llm, [SystemMessage(content=fix_tool_call_prompt)], tool_schema, timeout=120
+        llm, [UserMessage(content=fix_tool_call_prompt)], tool_schema, timeout=120
     )
     return ToolCall(
         name=original_tool_call.name,
@@ -83,6 +85,7 @@ async def call_tool(state: AgentState) -> AgentState:
         if tool_call.name.startswith(NATIVE_MCP_TOOL_PREFIX)
         else {}
     )
+    current_iteration = state["current_iteration"]
 
     remaining_attempts = MAX_LLM_RETRIES
     while remaining_attempts > 0:
@@ -116,7 +119,16 @@ async def call_tool(state: AgentState) -> AgentState:
         # if all attempts failed
         error_msg = f"Could not call tool {tool_call.name}."
         logger.error(error_msg)
-        return {"tool_results": [ToolResponse(id=tool_call.id, data=error_msg, success=False)]}
+        return {
+            "tool_results": [
+                IterationToolResponse(
+                    iteration=current_iteration,
+                    response=ToolResponse(id=tool_call.id, data=error_msg, success=False),
+                )
+            ]
+        }
 
     await adispatch_custom_event(StreamEvent.TOOL_COMPLETE, tool_call)
-    return {"tool_results": [tool_result]}
+    return {
+        "tool_results": [IterationToolResponse(iteration=current_iteration, response=tool_result)]
+    }

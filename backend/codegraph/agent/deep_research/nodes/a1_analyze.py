@@ -3,9 +3,16 @@ from typing import cast
 from langchain_core.callbacks.manager import adispatch_custom_event
 
 from codegraph.agent.deep_research.states import AgentState, AgentStep
-from codegraph.agent.llm.models import BaseMessage, SystemMessage
+from codegraph.agent.llm.models import (
+    AssistantMessage,
+    BaseMessage,
+    MessageType,
+    SystemMessage,
+    UserMessage,
+)
 from codegraph.agent.models import StreamEvent
 from codegraph.agent.prompts.deep_research_prompts import (
+    AGENT_SYSTEM_PROMPT,
     ANALYSIS_EXIT_KEYWORD,
     INTENT_ANALYSIS_PROMPT,
 )
@@ -17,17 +24,18 @@ async def analyze_intent(state: AgentState) -> AgentState:
     """A node which analyzes the user intent and generates a plan."""
     await adispatch_custom_event(StreamEvent.GRAPH_START, {})
 
+    user_prompt = state["user_prompt"]
     llm = state["llm"]
     client = MCPClient()
     tools = await client.alist_openai_tools()
-    tool_summaries = summarize_tools(tools)
+    history: list[BaseMessage] = [SystemMessage(content=AGENT_SYSTEM_PROMPT)]
 
     intent_analysis_prompt = INTENT_ANALYSIS_PROMPT.build(
-        user_prompt=state["user_prompt"], tool_summaries=tool_summaries
+        user_prompt=user_prompt, tool_summaries=summarize_tools(tools)
     )
     response: BaseMessage | None = None
     async for chunk in llm.astream(
-        [SystemMessage(content=intent_analysis_prompt)], max_tokens=1000, timeout=120
+        [*history, UserMessage(content=intent_analysis_prompt)], max_tokens=1000, timeout=120
     ):
         await adispatch_custom_event(StreamEvent.LLM_STREAM_REASON, chunk)
         if response is None:
@@ -35,21 +43,19 @@ async def analyze_intent(state: AgentState) -> AgentState:
         else:
             response += chunk
 
-    analysis_result = cast(BaseMessage, response).content.strip()
-    if analysis_result.startswith(ANALYSIS_EXIT_KEYWORD):
-        return {
-            "tools": tools,
-            "complete": True,
-            "completion_reason": analysis_result[len(ANALYSIS_EXIT_KEYWORD) :].strip(),
-            "current_iteration": 1,
-        }
+    full_response = cast(BaseMessage, response)
+    assert full_response.role == MessageType.ASSISTANT
+    history.append(UserMessage(content=user_prompt))
+    analysis_result = full_response.content.strip("\n-")
 
-    return {
-        "complete": False,
-        "tools": tools,
-        "analysis_result": analysis_result,
-        "current_iteration": 1,
-    }
+    if analysis_result.startswith(ANALYSIS_EXIT_KEYWORD):
+        history.append(
+            AssistantMessage(content=analysis_result[len(ANALYSIS_EXIT_KEYWORD) :].strip())
+        )
+        return {"tools": tools, "history": history, "current_iteration": 1, "complete": True}
+
+    history.append(AssistantMessage(content=analysis_result))
+    return {"tools": tools, "history": history, "current_iteration": 1, "complete": False}
 
 
 async def continue_or_exit(state: AgentState) -> AgentStep:
