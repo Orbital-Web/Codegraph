@@ -102,6 +102,7 @@ async def grep_file(
         return []
 
     # TODO: send response as a pydantic model in shared_models.py
+    # TODO: limit size of response to avoid out of token
     return stdout.decode().split("\n")
 
 
@@ -212,6 +213,7 @@ async def grep_dir(
         return []
 
     # TODO: send response as a pydantic model in shared_models.py
+    # TODO: limit size of response to avoid out of token
     return stdout.decode().split("\n")
 
 

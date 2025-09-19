@@ -28,7 +28,7 @@ Analyze the user's intent from the prompt above and produce a concise, high leve
 accomplishing it using the following tools. The prompt may be a question, or a request:
 ---tool_summaries---
 
-Respond in the format:
+Respond in the format (without the ---):
 ---
 The user is looking to ... (1-3 sentences)
 To do this, I should ... (write a concise, high level action plan)
@@ -159,7 +159,7 @@ Tool responses (from this iteration):
 Available tools:
 ---tool_summaries---
 
-Respond in the format:
+Respond in the format (without the ---):
 ---
 I used ... (short summary of what was done this iteration).
 I've fully addressed the user prompt and am ready to generate the final response
