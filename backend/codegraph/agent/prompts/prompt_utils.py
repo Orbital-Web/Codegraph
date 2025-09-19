@@ -2,6 +2,9 @@ import json
 import re
 
 from openai.types.chat import ChatCompletionToolParam
+from pydantic import BaseModel
+
+from codegraph.agent.llm.models import ToolResponse
 
 
 class PromptTemplate:
@@ -58,3 +61,18 @@ def format_tools(tools: list[ChatCompletionToolParam]) -> str:
 
 def format_tool(tool: ChatCompletionToolParam) -> str:
     return json.dumps(tool["function"]["parameters"], indent=4)
+
+
+def format_tool_response(tool_response: ToolResponse) -> str:
+    data = tool_response.data
+    response_dict = {
+        "name": tool_response.tool_call.name,
+        "args": tool_response.tool_call.arguments,
+        "success": tool_response.success,
+        "response": (
+            data.model_dump()
+            if isinstance(data, BaseModel)
+            else data if isinstance(data, dict) else str(data)
+        ),
+    }
+    return json.dumps(response_dict, indent=4)

@@ -1,5 +1,3 @@
-from typing import cast
-
 from langchain_core.callbacks.manager import adispatch_custom_event
 
 from codegraph.agent.deep_research.states import AgentState, AgentStep
@@ -43,19 +41,21 @@ async def analyze_intent(state: AgentState) -> AgentState:
         else:
             response += chunk
 
-    full_response = cast(BaseMessage, response)
-    assert full_response.role == MessageType.ASSISTANT
+    assert response is not None
+    assert response.role == MessageType.ASSISTANT
     history.append(UserMessage(content=user_prompt))
-    analysis_result = full_response.content.strip("\n-")
+    analysis_result = response.content.strip("\n-")
 
     if analysis_result.startswith(ANALYSIS_EXIT_KEYWORD):
         history.append(
             AssistantMessage(content=analysis_result[len(ANALYSIS_EXIT_KEYWORD) :].strip())
         )
-        return {"tools": tools, "history": history, "current_iteration": 1, "complete": True}
+        complete = True
+    else:
+        history.append(AssistantMessage(content=analysis_result))
+        complete = False
 
-    history.append(AssistantMessage(content=analysis_result))
-    return {"tools": tools, "history": history, "current_iteration": 1, "complete": False}
+    return {"tools": tools, "history": history, "current_iteration": 1, "complete": complete}
 
 
 async def continue_or_exit(state: AgentState) -> AgentStep:

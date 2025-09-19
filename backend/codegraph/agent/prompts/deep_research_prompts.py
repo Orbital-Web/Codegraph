@@ -140,3 +140,38 @@ any other response other than the json object:
 ---tool_spec---\
 """
 )
+
+
+PLAN_END_KEYWORD = "[DONE]"
+PLAN_CONTINUE_KEYWORD = "[CONTINUE]"
+
+PLAN_NEXT_PROMPT = PromptTemplate(
+    f"""\
+Your task:
+Based on the tool responses and the tool descriptions below, write a concise summary of what was \
+accomplished in this iteration.
+Then, decide whether the user's prompt has been fully addressed or if further steps are needed.
+Do not write the final response or call tools yourself.
+
+Tool responses (from this iteration):
+---tool_responses---
+
+Available tools:
+---tool_summaries---
+
+Respond in the format:
+---
+I used ... (short summary of what was done this iteration).
+I've fully addressed the user prompt and am ready to generate the final response
+OR
+I still need to ... (briefly state what remains).
+{PLAN_END_KEYWORD} or {PLAN_CONTINUE_KEYWORD}
+---
+
+Rules:
+- Always end with exactly one of {PLAN_END_KEYWORD} or {PLAN_CONTINUE_KEYWORD} (nothing after it).
+- Be concise and factual.\
+"""
+)
+
+PLAN_FORCE_TERMINATE_PROMPT = "I would like to continue; however, I've ran out of iterations."

@@ -64,9 +64,13 @@ class ToolCall(BaseModel):
 
 
 class ToolResponse(BaseModel):
-    id: str
+    tool_call: ToolCall
     data: Any
     success: bool = True
+
+    @property
+    def id(self) -> str:
+        return self.tool_call.id
 
 
 class BaseMessage(BaseModel):

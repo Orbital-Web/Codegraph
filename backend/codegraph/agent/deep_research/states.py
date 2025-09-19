@@ -48,7 +48,6 @@ class AgentState(TypedDict, total=False):
     tool_results: Annotated[list[IterationToolResponse], operator.add]
     generated_codes: Annotated[list[tuple[Path, str]], operator.add]  # TODO: fill in call_tool
     # plan_next
-    iteration_summaries: Annotated[list[str], operator.add]
     complete: bool
 
 

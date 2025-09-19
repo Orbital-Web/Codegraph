@@ -9,7 +9,12 @@ from openai.types.chat import ChatCompletionToolParam
 from codegraph.agent.deep_research.models import ToolCallFormat
 from codegraph.agent.deep_research.states import AgentState, AgentStep
 from codegraph.agent.llm.chat_llm import LLM
-from codegraph.agent.llm.models import BaseMessage, ToolCall, ToolChoice, UserMessage
+from codegraph.agent.llm.models import (
+    BaseMessage,
+    ToolCall,
+    ToolChoice,
+    UserMessage,
+)
 from codegraph.agent.llm.utils import ainvoke_llm_json
 from codegraph.agent.models import StreamEvent
 from codegraph.agent.prompts.deep_research_prompts import (
@@ -29,6 +34,7 @@ async def _try_choose_tool_no_tc(
     current_iteration: int,
     remaining_iteration: int,
 ) -> ToolCall:
+    # TODO: revisit, maybe use history and/or system prompt
     tool_specs = format_tools(tools)
     previous_attempt_clause = ""
 
@@ -122,11 +128,7 @@ async def choose_tools(state: AgentState) -> AgentState:
 
 
 async def continue_to_tool_call(state: AgentState) -> Send | list[Send]:
-    if not state["tool_calls"]:
-        return Send(
-            AgentStep.RESPOND,
-            {**state, "complete": True, "completion_reason": "no tools were called"},
-        )
+    assert state["tool_calls"]
 
     return [
         Send(AgentStep.CALL_TOOL, {**state, "current_tool": tool_call})

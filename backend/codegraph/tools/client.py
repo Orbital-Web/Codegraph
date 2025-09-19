@@ -44,7 +44,7 @@ class MCPClient:
 
         async with self.client:
             response = await self.client.call_tool(tool_call.name, args)
-            return ToolResponse(id=tool_call.id, data=response.data)
+            return ToolResponse(tool_call=tool_call, data=response.data)
 
     def list_tools(self) -> list[Tool]:
         return asyncio.run(self.alist_tools())

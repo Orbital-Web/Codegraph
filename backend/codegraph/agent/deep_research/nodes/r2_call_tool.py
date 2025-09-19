@@ -70,6 +70,7 @@ async def _fix_tool_call(
 
 
 async def call_tool(state: AgentState) -> AgentState:
+    """A node which calls a tool."""
     tool_call = state["current_tool"]
     await adispatch_custom_event(StreamEvent.TOOL_KICKOFF, tool_call)
 
@@ -123,7 +124,7 @@ async def call_tool(state: AgentState) -> AgentState:
             "tool_results": [
                 IterationToolResponse(
                     iteration=current_iteration,
-                    response=ToolResponse(id=tool_call.id, data=error_msg, success=False),
+                    response=ToolResponse(tool_call=tool_call, data=error_msg, success=False),
                 )
             ]
         }
