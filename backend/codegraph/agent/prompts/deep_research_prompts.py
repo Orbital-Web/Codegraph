@@ -175,3 +175,9 @@ Rules:
 )
 
 PLAN_FORCE_TERMINATE_PROMPT = "I would like to continue; however, I've ran out of iterations."
+
+
+FINAL_RESPONSE_PROMPT = """\
+Your Task:
+Given the information you've gathered, write a complete, final response to the user.\
+"""

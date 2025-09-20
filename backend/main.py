@@ -28,15 +28,17 @@ def run_graph(
         input_state: InputT,
         config: RunnableConfig | None = None,
     ) -> None:
-        was_streaming = False
+        stream_event: StreamEvent | None = None
+
         async for event, data in astream_graph(graph, input_state, config):
+            if stream_event is not None and event != stream_event:
+                print("\n")
+
             if event == StreamEvent.LLM_STREAM_REASON or event == StreamEvent.LLM_STREAM:
                 print(data.content, end="")
-                was_streaming = True
+                stream_event = event
             else:
-                if was_streaming:
-                    print("\n\n")
-                    was_streaming = False
+                stream_event = None
 
                 if event == StreamEvent.GRAPH_START:
                     print("Analyzing user intent...")
