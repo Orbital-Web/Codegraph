@@ -13,10 +13,8 @@ from codegraph.agent.llm.models import (
     LLMException,
     LLMValidationInfo,
     ReasoningEffort,
-    SystemMessage,
     ToolCall,
     ToolChoice,
-    UserMessage,
 )
 from codegraph.configs.llm import LLM_API_BASE, LLM_API_KEY, LLM_MODEL_NAME
 from codegraph.utils.logging import get_logger
@@ -104,7 +102,7 @@ class LLM:
         reasoning_effort: ReasoningEffort | None = None,
         timeout: float | None = None,
         max_tokens: int | None = None,
-    ) -> BaseMessage:
+    ) -> AssistantMessage:
         response = cast(
             litellm.ModelResponse,
             self._completion(
@@ -134,7 +132,7 @@ class LLM:
         reasoning_effort: ReasoningEffort | None = None,
         timeout: float | None = None,
         max_tokens: int | None = None,
-    ) -> Iterator[BaseMessage]:
+    ) -> Iterator[AssistantMessage]:
         response = cast(
             litellm.CustomStreamWrapper,
             self._completion(
@@ -149,16 +147,13 @@ class LLM:
                 stream=True,
             ),
         )
-        role: str | None = None
         for part in response:
             if not part.choices:
                 continue
             choice = part.choices[0]
             delta = choice.delta
 
-            message = _convert_litellm_delta(delta, role)
-            role = message.role.value
-            yield message
+            yield _convert_litellm_delta(delta)
 
     def _completion(
         self,
@@ -232,7 +227,7 @@ class LLM:
         reasoning_effort: ReasoningEffort | None = None,
         timeout: float | None = None,
         max_tokens: int | None = None,
-    ) -> BaseMessage:
+    ) -> AssistantMessage:
         response = cast(
             litellm.ModelResponse,
             await self._acompletion(
@@ -262,7 +257,7 @@ class LLM:
         reasoning_effort: ReasoningEffort | None = None,
         timeout: float | None = None,
         max_tokens: int | None = None,
-    ) -> AsyncIterator[BaseMessage]:
+    ) -> AsyncIterator[AssistantMessage]:
         response = cast(
             litellm.CustomStreamWrapper,
             await self._acompletion(
@@ -277,16 +272,13 @@ class LLM:
                 stream=True,
             ),
         )
-        role: str | None = None
         async for part in response:
             if not part.choices:
                 continue
             choice = part.choices[0]
             delta = choice.delta
 
-            message = _convert_litellm_delta(delta, role)
-            role = message.role.value
-            yield message
+            yield _convert_litellm_delta(delta)
 
     async def _acompletion(
         self,
@@ -338,7 +330,7 @@ class LLM:
         )
 
 
-def _convert_litellm_message(message: litellm.Message) -> BaseMessage:
+def _convert_litellm_message(message: litellm.Message) -> AssistantMessage:
     content = message.content or ""
     tool_calls = cast(
         list[litellm.ChatCompletionMessageToolCall],
@@ -346,61 +338,44 @@ def _convert_litellm_message(message: litellm.Message) -> BaseMessage:
     )
     reasoning_content = message.reasoning_content if hasattr(message, "reasoning_content") else None
 
-    if message.role == "assistant" or tool_calls:
-        return AssistantMessage(
-            content=content,
-            reasoning_content=reasoning_content,
-            tool_calls=(
-                [
-                    ToolCall(
-                        name=tool_call.function.name or "",
-                        args=tool_call.function.arguments,
-                        id=tool_call.id,
-                        index=index,
-                    )
-                    for index, tool_call in enumerate(tool_calls)
-                ]
-                if tool_calls
-                else None
-            ),
-        )
-    elif message.role == "user":
-        return UserMessage(content=content)
-    elif message.role == "system":
-        return SystemMessage(content=content)
-    else:
-        raise ValueError(f"Unknown message role {message.role}")
+    return AssistantMessage(
+        content=content,
+        reasoning_content=reasoning_content,
+        tool_calls=(
+            [
+                ToolCall(
+                    name=tool_call.function.name or "",
+                    args=tool_call.function.arguments,
+                    id=tool_call.id,
+                    index=index,
+                )
+                for index, tool_call in enumerate(tool_calls)
+            ]
+            if tool_calls
+            else None
+        ),
+    )
 
 
-def _convert_litellm_delta(delta: Delta, default_role: str | None) -> BaseMessage:
-    role = delta.role or default_role
+def _convert_litellm_delta(delta: Delta) -> AssistantMessage:
     content = delta.content or ""
     tool_calls = cast(list[ChatCompletionDeltaToolCall] | None, delta.tool_calls)
     reasoning_content = delta.reasoning_content if hasattr(delta, "reasoning_content") else None
 
-    if role == "assistant" or tool_calls:
-        return AssistantMessage(
-            content=content,
-            reasoning_content=reasoning_content,
-            tool_calls=(
-                [
-                    ToolCall(
-                        name=tool_call.function.name or "",
-                        args=tool_call.function.arguments,
-                        id=tool_call.id or "",
-                        index=tool_call.index,
-                    )
-                    for tool_call in tool_calls
-                ]
-                if tool_calls
-                else None
-            ),
-        )
-    elif role == "user":
-        return UserMessage(content=content)
-    elif role == "system":
-        return SystemMessage(content=content)
-    elif role is None:
-        raise ValueError("Message role cannot be None")
-    else:
-        raise ValueError(f"Unknown message role {role}")
+    return AssistantMessage(
+        content=content,
+        reasoning_content=reasoning_content,
+        tool_calls=(
+            [
+                ToolCall(
+                    name=tool_call.function.name or "",  # might only be set for one of the chunks
+                    args=tool_call.function.arguments,
+                    id=tool_call.id or "",  # might only be set for one of the chunks
+                    index=tool_call.index,
+                )
+                for tool_call in tool_calls
+            ]
+            if tool_calls
+            else None
+        ),
+    )

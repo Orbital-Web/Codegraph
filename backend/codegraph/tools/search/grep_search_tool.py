@@ -1,4 +1,6 @@
+# TODO: write test cases with malicious input, e.g., pattern = " && rm -rf
 import asyncio
+import re
 import shutil
 from pathlib import Path
 from typing import Annotated
@@ -8,7 +10,7 @@ from fastmcp.exceptions import ToolError
 
 from codegraph.db.engine import get_session
 from codegraph.db.models import Project
-from codegraph.tools.shared_models import InternalToolCallError
+from codegraph.tools.shared_models import GrepMatch, GrepMatches, InternalToolCallError
 from codegraph.utils.logging import get_logger
 
 logger = get_logger()
@@ -21,21 +23,118 @@ def _resolve_paths(paths: list[str], base_path: Path) -> list[str]:
     for p in paths:
         path = Path(p)
         if path.is_absolute():
+            rpath = path.resolve(strict=True)
             resolved.append(path.resolve(strict=True).as_posix())
+
+            # raise error if path is not under base path
+            if not rpath.is_relative_to(base_path):
+                raise ValueError(f"Path {path.as_posix()} is not a valid path within the project")
         else:
-            resolved.append((base_path / path).resolve(strict=True).as_posix())
+            rpath = (base_path / path).resolve(strict=True)
+        resolved.append(rpath.as_posix())
 
     return resolved
 
 
-@app.tool(exclude_args=["project_id"])
+def _process_grep_result(grep_result: str, file_path: str, base_path: Path) -> GrepMatches:
+    splitter = re.compile(r"^(\d+)[:\-](.*)$")
+
+    results = grep_result.split("\n--\n")
+    grep_matches: list[GrepMatch] = []
+
+    for result in results:
+        line_no = 0
+        content = ""
+
+        for line in result.rstrip("\n").split("\n"):
+            re_match = splitter.match(line)
+            if not re_match:
+                logger.error(f"Could not process grep output: {line}")
+                continue
+
+            match_line_no: str = re_match.group(1)
+            match_content: str = re_match.group(2)
+
+            line_no = line_no or int(match_line_no)
+            content += match_content + "\n"
+
+        assert line_no != 0
+
+        grep_matches.append(
+            GrepMatch(
+                filepath=Path(file_path).relative_to(base_path).as_posix(),
+                line_no=line_no,
+                content=content,
+            )
+        )
+
+    return GrepMatches(matches=grep_matches)
+
+
+def _process_multifile_grep_result(
+    grep_result: str, base_path: Path, max_results: int | None = None
+) -> GrepMatches:
+    splitter = re.compile(r"^(.+)([:\-])(\d+)\2(.*)$")
+
+    results = grep_result.split("\n--\n")
+    grep_matches: list[GrepMatch] = []
+
+    if max_results is not None:
+        results = results[:max_results]
+
+    for result in results:
+        path = ""
+        line_no = 0
+        content = ""
+
+        for line in result.rstrip("\n").split("\n"):
+            re_match = splitter.match(line)
+            if not re_match:
+                logger.error(f"Could not process grep output: {line}")
+                continue
+
+            match_path: str = re_match.group(1)  # this should stay consistent
+            match_line_no: str = re_match.group(3)
+            match_content: str = re_match.group(4)
+
+            assert path == "" or path == match_path  # verify path is consistent
+
+            path = path or match_path
+            line_no = line_no or int(match_line_no)
+            content += match_content + "\n"
+
+        assert path != ""
+        assert line_no != 0
+
+        grep_matches.append(
+            GrepMatch(
+                filepath=Path(path).relative_to(base_path).as_posix(),
+                line_no=line_no,
+                content=content,
+            )
+        )
+
+    return GrepMatches(matches=grep_matches)
+
+
+@app.tool(
+    exclude_args=["project_id"],
+    description=(
+        "Search for a string literal or regular expression match in one or more files within the "
+        "codebase. You should attempt to use specific patterns with a small context window to "
+        "avoid getting too much context for irrelevant results."
+    ),
+)
 async def grep_file(
     pattern: Annotated[
         str,
         (
-            "The pattern to search for. Treated as a string literal if `use_regex=False`. "
-            "Otherwise, treated as a (extended) regular expression. E.g., '[0-9]+' will match "
-            "the literal string if `use_regex=False`, otherwise it will match for digits."
+            "The pattern to search for. If `use_regex=False`, the value is treated as a plain "
+            "string (literal match). Otherwise, it is treated as an extended regular expression ("
+            "characters like `+`, `{`, `?` become special regex characters). The values must be "
+            r"JSON-safe: escape backslashes (`\` -> `\\`) and escape any quotes inside "
+            r'(`"` -> `\"`). Patterns can be single words, phrases, or arbitrary regular '
+            "expressions. Try to keep it simple if using `use_regex=True` to avoid misses."
         ),
     ],
     path: Annotated[
@@ -46,20 +145,26 @@ async def grep_file(
         ),
     ],
     use_regex: Annotated[
-        bool, "Whether to use string literals for `pattern` or regular expressions."
+        bool,
+        (
+            "Whether to use string literals for `pattern` or regular expressions. In general, "
+            "stick with `use_regex=False` and use simple string literal matches."
+        ),
     ] = False,
     ignore_case: Annotated[bool, "Whether to ignore cases when finding matches"] = False,
-    max_matches: Annotated[
-        int | None, "Maximum number of matches to find, or unlimited if `None`"
-    ] = None,
-    context_before: Annotated[int, "Number of lines before the match to include"] = 0,
-    context_after: Annotated[int, "Number of lines after the match to include"] = 0,
+    max_matches: Annotated[int, "Maximum number of matches to find per file. Max 20."] = 20,
+    context_before: Annotated[int, "Number of lines before the match to include. Max 5."] = 0,
+    context_after: Annotated[int, "Number of lines after the match to include. Max 5."] = 0,
     # runtime arguments
     project_id: int = -1,
-) -> list[str]:
-    """Search for a keyword or regular expression match in one or more files within the codebase."""
+) -> GrepMatches:
     if project_id == -1:
         raise InternalToolCallError("`project_id` not set correctly.")
+
+    # clamp values
+    max_matches = min(max_matches, 20)
+    context_before = min(context_before, 5)
+    context_after = min(context_after, 5)
 
     # get project root
     with get_session() as session:
@@ -71,6 +176,7 @@ async def grep_file(
         project_root = Path(project_root_str)
 
     # build args
+    resolved_paths = _resolve_paths([path] if isinstance(path, str) else path, project_root)
     args = [
         arg
         for arg in (
@@ -78,14 +184,17 @@ async def grep_file(
             "-I",  # skip binaries
             "-E" if use_regex else "-F",
             "-i" if ignore_case else None,
-            f"-m {max_matches}" if max_matches else None,
-            f"-B {context_before}" if context_before else None,
-            f"-A {context_after}" if context_after else None,
+            "-m",
+            str(max_matches),
+            "-B",
+            str(context_before),
+            "-A",
+            str(context_after),
         )
         if arg is not None
     ]
     args.append(pattern)
-    args.extend(_resolve_paths([path] if isinstance(path, str) else path, project_root))
+    args.extend(resolved_paths)
 
     proc = await asyncio.create_subprocess_exec(
         "grep",
@@ -99,21 +208,33 @@ async def grep_file(
     if proc.returncode == 2:
         raise ToolError(f"grep failed with code {proc.returncode}: {stderr.decode()}")
     elif proc.returncode == 1:
-        return []
+        return GrepMatches(matches=[])
 
-    # TODO: send response as a pydantic model in shared_models.py
-    # TODO: limit size of response to avoid out of token
-    return stdout.decode().split("\n")
+    return (
+        _process_grep_result(stdout.decode(), resolved_paths[0], project_root)
+        if len(resolved_paths) == 1
+        else _process_multifile_grep_result(stdout.decode(), project_root)
+    )
 
 
-@app.tool(exclude_args=["project_id"])
+@app.tool(
+    exclude_args=["project_id"],
+    description=(
+        "Search recursively for a string literal or regular expression match in one or more "
+        "directories within the codebase. You should attempt to use specific patterns with a small "
+        "context window to avoid getting too much context for irrelevant results."
+    ),
+)
 async def grep_dir(
     pattern: Annotated[
         str,
         (
-            "The pattern to search for. Treated as a string literal if `use_regex=False`. "
-            "Otherwise, treated as a (extended) regular expression. E.g., '[0-9]+' will match "
-            "the literal string if `use_regex=False`, otherwise it will match for digits."
+            "The pattern to search for. If `use_regex=False`, the value is treated as a plain "
+            "string (literal match). Otherwise, it is treated as an extended regular expression ("
+            "characters like `+`, `{`, `?` become special regex characters). The values must be "
+            r"JSON-safe: escape backslashes (`\` -> `\\`) and escape any quotes inside "
+            r'(`"` -> `\"`). Patterns can be single words, phrases, or arbitrary regular '
+            "expressions. Try to keep it simple if using `use_regex=True` to avoid misses."
         ),
     ],
     path: Annotated[
@@ -125,42 +246,48 @@ async def grep_dir(
         ),
     ],
     use_regex: Annotated[
-        bool, "Whether to use string literals for `pattern` or regular expressions."
+        bool,
+        (
+            "Whether to use string literals for `pattern` or regular expressions. In general, "
+            "stick with `use_regex=False` and use simple string literal matches."
+        ),
     ] = False,
     ignore_case: Annotated[bool, "Whether to ignore cases when finding matches"] = False,
-    max_matches: Annotated[
-        int | None, "Maximum number of matches to find, or unlimited if `None`"
-    ] = None,
-    context_before: Annotated[int, "Number of lines before the match to include"] = 0,
-    context_after: Annotated[int, "Number of lines after the match to include"] = 0,
+    max_matches: Annotated[int, "Maximum number of matches to find in total. Max 20."] = 20,
+    context_before: Annotated[int, "Number of lines before the match to include. Max 5."] = 0,
+    context_after: Annotated[int, "Number of lines after the match to include. Max 5."] = 0,
     exclude_dir: Annotated[
         str | list[str] | None,
         (
-            "Glob pattern for directories to skip. E.g., if `exclude_dir=['.?*', 'abc']`, "
-            "it will skip hidden directories and the `abc` directory. Defaults to `No"
+            "Glob pattern for directories to skip. E.g., `exclude_dir=['.*', 'abc']` will skip "
+            "hidden directories and the `abc` directory. Ignored if `None`"
         ),
-    ] = None,
+    ] = ".*",
     include: Annotated[
         str | list[str] | None,
         (
             "Glob pattern for files to include. If this parameter is provided, only files matching "
-            "these globs will be included. E.g., if `include='*.py'`, it will only include "
-            "matches from python files."
+            "these globs will be included. E.g., `include='*.py'`, it will only include matches "
+            "from python files."
         ),
     ] = None,
     exclude: Annotated[
         str | list[str] | None,
         (
-            "Glob pattern for files to exclude. E.g., if `exclude=['secret*','*.cpp']`, "
-            "matches in cpp files or files starting with 'secret' will be excluded."
+            "Glob pattern for files to exclude. E.g., `exclude=['secret*','*.cpp']` will exclude "
+            "matches in cpp files and files whose filename starts with 'secret'."
         ),
     ] = None,
     # runtime arguments
     project_id: int = -1,
-) -> list[str]:
-    """Search recursively for a keyword or regular expression match in one or more directories within the codebase."""
+) -> GrepMatches:
     if project_id == -1:
         raise InternalToolCallError("`project_id` not set correctly.")
+
+    # clamp values
+    max_matches = min(max_matches, 20)
+    context_before = min(context_before, 5)
+    context_after = min(context_after, 5)
 
     # get project root
     with get_session() as session:
@@ -172,6 +299,7 @@ async def grep_dir(
         project_root = Path(project_root_str)
 
     # build args
+    resolved_paths = _resolve_paths([path] if isinstance(path, str) else path, project_root)
     args = [
         arg
         for arg in (
@@ -180,23 +308,26 @@ async def grep_dir(
             "-r",  # recursive
             "-E" if use_regex else "-F",
             "-i" if ignore_case else None,
-            f"-m {max_matches}" if max_matches else None,
-            f"-B {context_before}" if context_before else None,
-            f"-A {context_after}" if context_after else None,
+            "-m",
+            str(max_matches),
+            "-B",
+            str(context_before),
+            "-A",
+            str(context_after),
         )
         if arg is not None
     ]
     if exclude_dir is not None:
         for i in exclude_dir if isinstance(exclude_dir, list) else [exclude_dir]:
-            args.append(f"--exclude-dir='{i}'")
+            args.append(f"--exclude-dir={i}")
     if include is not None:
         for i in include if isinstance(include, list) else [include]:
-            args.append(f"--include='{i}'")
+            args.append(f"--include={i}")
     if exclude is not None:
         for i in exclude if isinstance(exclude, list) else [exclude]:
-            args.append(f"--exclude='{i}'")
+            args.append(f"--exclude={i}")
     args.append(pattern)
-    args.extend(_resolve_paths([path] if isinstance(path, str) else path, project_root))
+    args.extend(resolved_paths)
 
     proc = await asyncio.create_subprocess_exec(
         "grep",
@@ -210,11 +341,9 @@ async def grep_dir(
     if proc.returncode == 2:
         raise ToolError(f"grep failed with code {proc.returncode}: {stderr.decode()}")
     elif proc.returncode == 1:
-        return []
+        return GrepMatches(matches=[])
 
-    # TODO: send response as a pydantic model in shared_models.py
-    # TODO: limit size of response to avoid out of token
-    return stdout.decode().split("\n")
+    return _process_multifile_grep_result(stdout.decode(), project_root, max_matches)
 
 
 if not shutil.which("grep"):

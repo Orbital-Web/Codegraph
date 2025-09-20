@@ -1,12 +1,7 @@
 from langchain_core.callbacks.manager import adispatch_custom_event
 
 from codegraph.agent.deep_research.states import AgentState, AgentStep
-from codegraph.agent.llm.models import (
-    AssistantMessage,
-    BaseMessage,
-    MessageType,
-    UserMessage,
-)
+from codegraph.agent.llm.models import AssistantMessage, UserMessage
 from codegraph.agent.models import StreamEvent
 from codegraph.agent.prompts.deep_research_prompts import (
     PLAN_CONTINUE_KEYWORD,
@@ -38,7 +33,7 @@ async def plan_next(state: AgentState) -> AgentState:
     next_plan_prompt = PLAN_NEXT_PROMPT.build(
         tool_responses="\n".join(tool_responses), tool_summaries=summarize_tools(tools)
     )
-    response: BaseMessage | None = None
+    response: AssistantMessage | None = None
     async for chunk in llm.astream(
         [*history, UserMessage(content=next_plan_prompt)], max_tokens=1000, timeout=120
     ):
@@ -49,7 +44,6 @@ async def plan_next(state: AgentState) -> AgentState:
             response += chunk
 
     assert response is not None
-    assert response.role == MessageType.ASSISTANT
     history.extend(AssistantMessage(content=tool_response) for tool_response in tool_responses)
     plan_result = response.content.strip("\n- ")
 

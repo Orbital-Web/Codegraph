@@ -108,6 +108,7 @@ async def call_tool(state: AgentState) -> AgentState:
                 tool_call = await _fix_tool_call(
                     llm, tool_call, tool, previous_tool_args, previous_error
                 )
+                await adispatch_custom_event(StreamEvent.TOOL_RETRY, tool_call)
             except AssertionError:
                 # don't ignore AssertionErrors, they're likely a coding error, not an LLM error
                 raise
@@ -118,13 +119,16 @@ async def call_tool(state: AgentState) -> AgentState:
                 break
     else:
         # if all attempts failed
-        error_msg = f"Could not call tool {tool_call.name}."
-        logger.error(error_msg)
+        await adispatch_custom_event(StreamEvent.TOOL_FAILURE, tool_call)
         return {
             "tool_results": [
                 IterationToolResponse(
                     iteration=current_iteration,
-                    response=ToolResponse(tool_call=tool_call, data=error_msg, success=False),
+                    response=ToolResponse(
+                        tool_call=tool_call,
+                        data=f"Could not call tool {tool_call.name}.",
+                        success=False,
+                    ),
                 )
             ]
         }

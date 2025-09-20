@@ -4,7 +4,6 @@ from codegraph.agent.deep_research.states import AgentState, AgentStep
 from codegraph.agent.llm.models import (
     AssistantMessage,
     BaseMessage,
-    MessageType,
     SystemMessage,
     UserMessage,
 )
@@ -31,7 +30,7 @@ async def analyze_intent(state: AgentState) -> AgentState:
     intent_analysis_prompt = INTENT_ANALYSIS_PROMPT.build(
         user_prompt=user_prompt, tool_summaries=summarize_tools(tools)
     )
-    response: BaseMessage | None = None
+    response: AssistantMessage | None = None
     async for chunk in llm.astream(
         [*history, UserMessage(content=intent_analysis_prompt)], max_tokens=1000, timeout=120
     ):
@@ -42,7 +41,6 @@ async def analyze_intent(state: AgentState) -> AgentState:
             response += chunk
 
     assert response is not None
-    assert response.role == MessageType.ASSISTANT
     history.append(UserMessage(content=user_prompt))
     analysis_result = response.content.strip("\n-")
 

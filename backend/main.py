@@ -44,8 +44,12 @@ def run_graph(
                     print("Choosing tools to call...")
                 elif event == StreamEvent.TOOL_KICKOFF:
                     print(f"Running tool `{data.name}`...")
+                elif event == StreamEvent.TOOL_RETRY:
+                    print(f"Retrying tool `{data.name}`")
                 elif event == StreamEvent.TOOL_COMPLETE:
                     print(f"Finished running tool `{data.name}`")
+                elif event == StreamEvent.TOOL_FAILURE:
+                    print(f"Failed to run tool `{data.name}`")
                 else:
                     print("")
 

@@ -1,3 +1,5 @@
+from pydantic import BaseModel
+
 from codegraph.configs.app_configs import INTERNAL_TOOL_CALL_ERROR_FLAG
 
 
@@ -10,3 +12,13 @@ class InternalToolCallError(Exception):
 
     def __str__(self) -> str:
         return INTERNAL_TOOL_CALL_ERROR_FLAG + super().__str__()
+
+
+class GrepMatch(BaseModel):
+    filepath: str
+    line_no: int
+    content: str
+
+
+class GrepMatches(BaseModel):
+    matches: list[GrepMatch]

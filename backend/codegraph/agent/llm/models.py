@@ -1,6 +1,6 @@
 import json
 from enum import Enum
-from typing import Any, Literal, cast
+from typing import Any, Literal, Self, cast
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -96,7 +96,7 @@ class BaseMessage(BaseModel):
             ]
         return message_dict
 
-    def __add__(self, other: "BaseMessage") -> "BaseMessage":
+    def __add__(self, other: Self) -> Self:
         assert self.role == other.role
 
         merged_tool_calls = {tool.index: tool.model_copy() for tool in self.tool_calls or []}
@@ -109,7 +109,7 @@ class BaseMessage(BaseModel):
             else:
                 merged_tool_calls[tool.index] = tool.model_copy()
 
-        return BaseMessage(
+        return self.__class__(
             role=self.role,
             content=self.content + other.content,
             reasoning_content=(
