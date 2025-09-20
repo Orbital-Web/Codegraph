@@ -17,9 +17,6 @@ logger = get_logger()
 
 async def plan_next(state: AgentState) -> AgentState:
     """A node which decides whether to continue or reiterate."""
-    # TODO: build summary of iteration and decide whether to continue or not
-    # make sure to include the tools in the context
-    # add them to history. If remaining iteration is 0, add a fake aimessage about that
     llm = state["llm"]
     tools = state["tools"]
     history = state["history"]
@@ -44,6 +41,7 @@ async def plan_next(state: AgentState) -> AgentState:
             response += chunk
 
     assert response is not None
+    # TODO: use a prompt to rate each output and whether it should keep it in memory or not
     history.extend(AssistantMessage(content=tool_response) for tool_response in tool_responses)
     plan_result = response.content.strip("\n- ")
 

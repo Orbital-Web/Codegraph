@@ -15,8 +15,8 @@ from codegraph.agent.prompts.deep_research_prompts import (
     CALL_TOOL_ON_FAIL_PROMPT,
 )
 from codegraph.agent.prompts.prompt_utils import format_tool
-from codegraph.configs.app_configs import INTERNAL_TOOL_CALL_ERROR_FLAG, NATIVE_MCP_TOOL_PREFIX
 from codegraph.configs.llm import MAX_LLM_RETRIES
+from codegraph.configs.tools import INTERNAL_TOOL_CALL_ERROR_FLAG, NATIVE_MCP_TOOL_PREFIX
 from codegraph.tools.client import MCPClient
 from codegraph.utils.logging import get_logger
 
@@ -83,7 +83,7 @@ async def call_tool(state: AgentState) -> AgentState:
     assert tool is not None
     tool_kwargs = (
         {"project_id": state["project_id"]}
-        if tool_call.name.startswith(NATIVE_MCP_TOOL_PREFIX)
+        if tool_call.name.startswith(NATIVE_MCP_TOOL_PREFIX + "_")
         else {}
     )
     current_iteration = state["current_iteration"]

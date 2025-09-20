@@ -8,32 +8,14 @@ from typing import Annotated
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 
-from codegraph.db.engine import get_session
-from codegraph.db.models import Project
-from codegraph.tools.shared_models import GrepMatch, GrepMatches, InternalToolCallError
+from codegraph.configs.tools import GREP_MAX_CONTEXT, GREP_MAX_MATCHES
+from codegraph.tools.shared_models import GrepMatch, GrepMatches
+from codegraph.tools.utils.tool_utils import get_project_root, resolve_paths
 from codegraph.utils.logging import get_logger
 
 logger = get_logger()
 
 app = FastMCP(__name__)
-
-
-def _resolve_paths(paths: list[str], base_path: Path) -> list[str]:
-    resolved: list[str] = []
-    for p in paths:
-        path = Path(p)
-        if path.is_absolute():
-            rpath = path.resolve(strict=True)
-            resolved.append(path.resolve(strict=True).as_posix())
-
-            # raise error if path is not under base path
-            if not rpath.is_relative_to(base_path):
-                raise ValueError(f"Path {path.as_posix()} is not a valid path within the project")
-        else:
-            rpath = (base_path / path).resolve(strict=True)
-        resolved.append(rpath.as_posix())
-
-    return resolved
 
 
 def _process_grep_result(grep_result: str, file_path: str, base_path: Path) -> GrepMatches:
@@ -44,7 +26,7 @@ def _process_grep_result(grep_result: str, file_path: str, base_path: Path) -> G
 
     for result in results:
         line_no = 0
-        content = ""
+        contents: list[str] = []
 
         for line in result.rstrip("\n").split("\n"):
             re_match = splitter.match(line)
@@ -56,7 +38,7 @@ def _process_grep_result(grep_result: str, file_path: str, base_path: Path) -> G
             match_content: str = re_match.group(2)
 
             line_no = line_no or int(match_line_no)
-            content += match_content + "\n"
+            contents.append(match_content + "\n")
 
         assert line_no != 0
 
@@ -64,7 +46,7 @@ def _process_grep_result(grep_result: str, file_path: str, base_path: Path) -> G
             GrepMatch(
                 filepath=Path(file_path).relative_to(base_path).as_posix(),
                 line_no=line_no,
-                content=content,
+                contents=contents,
             )
         )
 
@@ -85,7 +67,7 @@ def _process_multifile_grep_result(
     for result in results:
         path = ""
         line_no = 0
-        content = ""
+        contents: list[str] = []
 
         for line in result.rstrip("\n").split("\n"):
             re_match = splitter.match(line)
@@ -101,7 +83,7 @@ def _process_multifile_grep_result(
 
             path = path or match_path
             line_no = line_no or int(match_line_no)
-            content += match_content + "\n"
+            contents.append(match_content + "\n")
 
         assert path != ""
         assert line_no != 0
@@ -110,7 +92,7 @@ def _process_multifile_grep_result(
             GrepMatch(
                 filepath=Path(path).relative_to(base_path).as_posix(),
                 line_no=line_no,
-                content=content,
+                contents=contents,
             )
         )
 
@@ -152,31 +134,27 @@ async def grep_file(
         ),
     ] = False,
     ignore_case: Annotated[bool, "Whether to ignore cases when finding matches"] = False,
-    max_matches: Annotated[int, "Maximum number of matches to find per file. Max 20."] = 20,
-    context_before: Annotated[int, "Number of lines before the match to include. Max 5."] = 0,
-    context_after: Annotated[int, "Number of lines after the match to include. Max 5."] = 0,
+    max_matches: Annotated[
+        int, f"Maximum number of matches to find per file. Max {GREP_MAX_MATCHES}."
+    ] = GREP_MAX_MATCHES,
+    context_before: Annotated[
+        int, f"Number of lines before the match to include. Max {GREP_MAX_CONTEXT}."
+    ] = 0,
+    context_after: Annotated[
+        int, f"Number of lines after the match to include. Max {GREP_MAX_CONTEXT}."
+    ] = 0,
     # runtime arguments
     project_id: int = -1,
 ) -> GrepMatches:
-    if project_id == -1:
-        raise InternalToolCallError("`project_id` not set correctly.")
+    project_root = get_project_root(project_id)
 
     # clamp values
-    max_matches = min(max_matches, 20)
-    context_before = min(context_before, 5)
-    context_after = min(context_after, 5)
-
-    # get project root
-    with get_session() as session:
-        project_root_str = (
-            session.query(Project.root_path).filter(Project.id == project_id).scalar()
-        )
-        if project_root_str is None:
-            raise InternalToolCallError("Project with given `project_id` doesn't exist.")
-        project_root = Path(project_root_str)
+    max_matches = min(max_matches, GREP_MAX_MATCHES)
+    context_before = min(context_before, GREP_MAX_CONTEXT)
+    context_after = min(context_after, GREP_MAX_CONTEXT)
 
     # build args
-    resolved_paths = _resolve_paths([path] if isinstance(path, str) else path, project_root)
+    resolved_paths = resolve_paths([path] if isinstance(path, str) else path, project_root)
     args = [
         arg
         for arg in (
@@ -253,9 +231,15 @@ async def grep_dir(
         ),
     ] = False,
     ignore_case: Annotated[bool, "Whether to ignore cases when finding matches"] = False,
-    max_matches: Annotated[int, "Maximum number of matches to find in total. Max 20."] = 20,
-    context_before: Annotated[int, "Number of lines before the match to include. Max 5."] = 0,
-    context_after: Annotated[int, "Number of lines after the match to include. Max 5."] = 0,
+    max_matches: Annotated[
+        int, f"Maximum number of matches to find in total. Max {GREP_MAX_MATCHES}."
+    ] = GREP_MAX_MATCHES,
+    context_before: Annotated[
+        int, f"Number of lines before the match to include. Max {GREP_MAX_CONTEXT}."
+    ] = 0,
+    context_after: Annotated[
+        int, f"Number of lines after the match to include. Max {GREP_MAX_CONTEXT}."
+    ] = 0,
     exclude_dir: Annotated[
         str | list[str] | None,
         (
@@ -281,25 +265,15 @@ async def grep_dir(
     # runtime arguments
     project_id: int = -1,
 ) -> GrepMatches:
-    if project_id == -1:
-        raise InternalToolCallError("`project_id` not set correctly.")
+    project_root = get_project_root(project_id)
 
     # clamp values
-    max_matches = min(max_matches, 20)
-    context_before = min(context_before, 5)
-    context_after = min(context_after, 5)
-
-    # get project root
-    with get_session() as session:
-        project_root_str = (
-            session.query(Project.root_path).filter(Project.id == project_id).scalar()
-        )
-        if project_root_str is None:
-            raise InternalToolCallError("Project with given `project_id` doesn't exist.")
-        project_root = Path(project_root_str)
+    max_matches = min(max_matches, GREP_MAX_MATCHES)
+    context_before = min(context_before, GREP_MAX_CONTEXT)
+    context_after = min(context_after, GREP_MAX_CONTEXT)
 
     # build args
-    resolved_paths = _resolve_paths([path] if isinstance(path, str) else path, project_root)
+    resolved_paths = resolve_paths([path] if isinstance(path, str) else path, project_root)
     args = [
         arg
         for arg in (

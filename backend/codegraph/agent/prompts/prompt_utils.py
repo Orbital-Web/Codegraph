@@ -1,10 +1,13 @@
+import dataclasses
 import json
 import re
 
 from openai.types.chat import ChatCompletionToolParam
 from pydantic import BaseModel
 
+import codegraph.tools.shared_models as native_tool_models
 from codegraph.agent.llm.models import ToolResponse
+from codegraph.configs.tools import NATIVE_MCP_TOOL_PREFIX
 
 
 class PromptTemplate:
@@ -64,15 +67,32 @@ def format_tool(tool: ChatCompletionToolParam) -> str:
 
 
 def format_tool_response(tool_response: ToolResponse) -> str:
+    name = tool_response.tool_call.name
+    args = json.dumps(tool_response.tool_call.arguments, indent=4)
+    success = tool_response.success
     data = tool_response.data
-    response_dict = {
-        "name": tool_response.tool_call.name,
-        "args": tool_response.tool_call.arguments,
-        "success": tool_response.success,
-        "response": (
-            data.model_dump()
-            if isinstance(data, BaseModel)
-            else data if isinstance(data, dict) else str(data)
-        ),
-    }
-    return json.dumps(response_dict, indent=4)
+
+    if not success:
+        data_str = str(data)
+    else:
+        # this whole section is very scuffed
+        if name.startswith(NATIVE_MCP_TOOL_PREFIX + "_"):
+            data_str = format_native_tool_response(data)
+        elif isinstance(data, dict):
+            data_str = json.dumps(data, indent=4)
+        else:
+            data_str = str(data)
+
+    return (
+        f"tool: {name}\nsuccess: {tool_response.success}\n"
+        f"<args>\n{args}\n</args>\n"
+        f"<response>\n{data_str}\n</response>"
+    )
+
+
+def format_native_tool_response(data: BaseModel) -> str:
+    model_name = data.__class__.__name__
+    native_model = getattr(native_tool_models, model_name)
+    data_model = native_model(**dataclasses.asdict(data))
+    data_str: str = data_model.pretty_print()
+    return data_str
