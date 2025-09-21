@@ -23,7 +23,7 @@ def build_graph() -> CompiledStateGraph[AgentState, None, AgentInput, AgentOutpu
         AgentStep.ANALYZE_INTENT, continue_or_exit, [AgentStep.CHOOSE_TOOLS, AgentStep.RESPOND]
     )
     graph.add_conditional_edges(
-        AgentStep.CHOOSE_TOOLS, continue_to_tool_call, [AgentStep.CALL_TOOL, AgentStep.RESPOND]
+        AgentStep.CHOOSE_TOOLS, continue_to_tool_call, [AgentStep.CALL_TOOL]
     )
     graph.add_edge(AgentStep.CALL_TOOL, AgentStep.PLAN_NEXT)
     graph.add_conditional_edges(

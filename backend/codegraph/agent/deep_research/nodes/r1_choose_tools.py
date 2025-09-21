@@ -10,6 +10,7 @@ from codegraph.agent.deep_research.models import ToolCallFormat
 from codegraph.agent.deep_research.states import AgentState, AgentStep
 from codegraph.agent.llm.chat_llm import LLM
 from codegraph.agent.llm.models import (
+    AssistantMessage,
     BaseMessage,
     ToolCall,
     ToolChoice,
@@ -19,8 +20,8 @@ from codegraph.agent.llm.utils import ainvoke_llm_json
 from codegraph.agent.models import StreamEvent
 from codegraph.agent.prompts.deep_research_prompts import (
     CHOOSE_TOOL_NO_TC_PROMPT,
-    CHOOSE_TOOL_PREVIOUS_ATTEMPT_CLAUSE,
     CHOOSE_TOOL_PROMPT,
+    CHOOSE_TOOL_RETRY_NO_TC_PROMPT,
     PARALLEL_TOOL_CLAUSE,
 )
 from codegraph.agent.prompts.prompt_utils import format_tools
@@ -34,28 +35,24 @@ async def _try_choose_tool_no_tc(
     current_iteration: int,
     remaining_iteration: int,
 ) -> ToolCall:
-    # TODO: revisit, maybe use history and/or system prompt
     tool_specs = format_tools(tools)
-    previous_attempt_clause = ""
+
+    choose_tool_no_tc_prompt = CHOOSE_TOOL_NO_TC_PROMPT.build(
+        current_iteration=str(current_iteration),
+        remaining_iteration=(
+            f"the next {remaining_iteration} steps or earlier"
+            if remaining_iteration > 1
+            else "this step"
+        ),
+        tool_specs=tool_specs,
+    )
+    retry_history: list[BaseMessage] = [UserMessage(content=choose_tool_no_tc_prompt)]
 
     for _ in range(MAX_LLM_RETRIES):
-        choose_tool_no_tc_prompt = CHOOSE_TOOL_NO_TC_PROMPT.build(
-            current_iteration=str(current_iteration),
-            remaining_iteration=(
-                f"the next {remaining_iteration} steps or earlier"
-                if remaining_iteration > 1
-                else "this step"
-            ),
-            tool_specs=tool_specs,
-            previous_attempt_clause=previous_attempt_clause,
-        )
         llm_tool_call: ToolCallFormat | None = None
         try:
             llm_tool_call = await ainvoke_llm_json(
-                llm,
-                [*history, UserMessage(content=choose_tool_no_tc_prompt)],
-                ToolCallFormat,
-                timeout=120,
+                llm, [*history, *retry_history], ToolCallFormat, timeout=120
             )
             tool_call_name = llm_tool_call.name
             tool_call_args = llm_tool_call.args
@@ -73,9 +70,12 @@ async def _try_choose_tool_no_tc(
 
             validate(instance=json.loads(tool_call_args), schema=tool_schema)
         except Exception as e:
-            previous_attempt_clause = CHOOSE_TOOL_PREVIOUS_ATTEMPT_CLAUSE.build(
-                previous_output=str(llm_tool_call), previous_error=str(e)
-            )
+            if llm_tool_call is not None:
+                retry_history.append(
+                    AssistantMessage(content=llm_tool_call.model_dump_json(indent=4))
+                )
+            retry_prompt = CHOOSE_TOOL_RETRY_NO_TC_PROMPT.build(previous_error=str(e))
+            retry_history.append(UserMessage(content=retry_prompt))
         else:
             # if no errors were raised, no need to retry
             break
@@ -127,7 +127,7 @@ async def choose_tools(state: AgentState) -> AgentState:
     return {"tool_calls": [tool_call.finalize() for tool_call in tool_calls]}
 
 
-async def continue_to_tool_call(state: AgentState) -> Send | list[Send]:
+async def continue_to_tool_call(state: AgentState) -> list[Send]:
     assert state["tool_calls"]
 
     return [
